@@ -286,6 +286,41 @@
     return wrapper;
   }
 
+  function renderConfirmButtons(onYes, onNo) {
+    const container = document.createElement('div');
+    container.style.cssText = 'display:flex;gap:8px;margin-top:12px;';
+
+    const yesBtn = document.createElement('button');
+    yesBtn.textContent = '✓ Yes, that\'s right';
+    yesBtn.style.cssText = 'background:#7C6EE6;border:none;border-radius:20px;padding:8px 18px;font-size:13px;color:#fff;cursor:pointer;font-family:inherit;transition:background 0.2s;';
+    yesBtn.addEventListener('mouseenter', () => yesBtn.style.background = '#6558d4');
+    yesBtn.addEventListener('mouseleave', () => yesBtn.style.background = '#7C6EE6');
+    yesBtn.addEventListener('click', () => {
+      container.style.opacity = '0.4';
+      container.style.pointerEvents = 'none';
+      addMsg('Yes, that\'s right', 'user');
+      onYes();
+    });
+
+    const noBtn = document.createElement('button');
+    noBtn.textContent = '✎ No, I want to correct';
+    noBtn.style.cssText = 'background:#2a2a3a;border:1px solid #3a3a5a;border-radius:20px;padding:8px 18px;font-size:13px;color:#aaa;cursor:pointer;font-family:inherit;transition:all 0.2s;';
+    noBtn.addEventListener('mouseenter', () => { noBtn.style.background = '#3a3a4a'; noBtn.style.color = '#ececec'; });
+    noBtn.addEventListener('mouseleave', () => { noBtn.style.background = '#2a2a3a'; noBtn.style.color = '#aaa'; });
+    noBtn.addEventListener('click', () => {
+      container.style.opacity = '0.4';
+      container.style.pointerEvents = 'none';
+      inputEl.disabled = false;
+      inputEl.placeholder = 'Type your correction...';
+      inputEl.focus();
+      sendBtn.disabled = false;
+    });
+
+    container.appendChild(yesBtn);
+    container.appendChild(noBtn);
+    return container;
+  }
+
   function renderModulePicker(workflowSteps) {
     const container = document.createElement('div');
     container.style.cssText = 'margin-top:12px;';
@@ -359,30 +394,21 @@
         .replace(/`(.*?)`/g, '$1')
         .replace('SHOW_MODULES', '').trim();
 
-      const lines = clean.split('\n');
+      const lines = clean.split('\n').filter(l => l.trim());
       const workflowIdx = lines.findIndex(l =>
         (l.includes('→') || l.includes('->')) && l.split(/→|->/).length >= 2
       );
 
       if (workflowIdx !== -1) {
+        // Has workflow — render text before, workflow, text after
         const before = lines.slice(0, workflowIdx).join('\n').trim();
         const after = lines.slice(workflowIdx + 1).join('\n').trim();
-        if (before) {
-          const p = document.createElement('p');
-          p.style.marginBottom = '4px';
-          p.textContent = before;
-          bubble.appendChild(p);
-        }
+        if (before) renderTextBlock(before, bubble);
         const wf = renderWorkflow(lines[workflowIdx]);
         if (wf) bubble.appendChild(wf);
-        if (after) {
-          const p = document.createElement('p');
-          p.style.marginTop = '8px';
-          p.textContent = after;
-          bubble.appendChild(p);
-        }
+        if (after) renderTextBlock(after, bubble, '8px', '0');
       } else {
-        bubble.textContent = clean;
+        renderTextBlock(clean, bubble);
       }
 
       if (extra) bubble.appendChild(extra);
@@ -396,6 +422,39 @@
     messagesEl.appendChild(row);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return row;
+  }
+
+  function renderTextBlock(text, parent, marginTop, marginBottom) {
+    const lines = text.split('\n').filter(l => l.trim());
+    const bulletLines = lines.filter(l => /^[-•*]\s/.test(l.trim()));
+    const isBulletList = bulletLines.length > 1;
+
+    if (isBulletList) {
+      // First line might be intro text (not a bullet)
+      const introLine = lines.find(l => !/^[-•*]\s/.test(l.trim()));
+      if (introLine) {
+        const p = document.createElement('p');
+        p.textContent = introLine;
+        p.style.marginBottom = '8px';
+        if (marginTop) p.style.marginTop = marginTop;
+        parent.appendChild(p);
+      }
+      const ul = document.createElement('ul');
+      ul.style.cssText = 'padding-left:18px;display:flex;flex-direction:column;gap:4px;margin:4px 0;';
+      bulletLines.forEach(l => {
+        const li = document.createElement('li');
+        li.style.cssText = 'font-size:14px;line-height:1.6;color:#ececec;';
+        li.textContent = l.replace(/^[-•*]\s/, '').trim();
+        ul.appendChild(li);
+      });
+      parent.appendChild(ul);
+    } else {
+      const p = document.createElement('p');
+      p.textContent = text;
+      if (marginTop) p.style.marginTop = marginTop;
+      if (marginBottom) p.style.marginBottom = marginBottom;
+      parent.appendChild(p);
+    }
   }
 
   function setTyping(on) {
@@ -428,9 +487,9 @@ Strict conversation flow:
 
 - INTRO: Introduce yourself warmly. Say you are an AI model based on Claude, set up by Agitech. Explain in one sentence that your goal is to prepare a document capturing their business process and needs to save everyone's time. Then ask: "To get started, what is your company website?"
 
-- WEBSITE: The user just gave their website URL. You MUST use the web_search tool first to research it. After searching, write 4-5 sentences about what the company does — what they produce, who their clients are, how they sell. End with "Does that sound right?"
+- WEBSITE: The user just gave their website URL. You MUST use the web_search tool first to research it. After searching, always start with "According to my research," then write maximum 4 bullet points about what the company does — what they produce, who their clients are, how they sell. End with "Does that sound right?"
 
-- CONFIRM: User confirmed or corrected the description. Now output their business process on a single line using ONLY this format: Step1 → Step2 → Step3 → Step4. The process MUST always include: (1) client ordering, (2) buying or producing, (3) invoicing or client paying. Use real labels from their business. End with "Does that sound right?"
+- CONFIRM: The user confirmed the description is correct. Now output their business process on a single line using ONLY this format: Step1 → Step2 → Step3 → Step4. The process MUST always include: (1) client ordering, (2) buying or producing, (3) invoicing or client paying. Use real labels from their business. End with "Does that sound right?"
 
 - CONFIRM_WORKFLOW: User confirmed or corrected the workflow. Say one short warm sentence. Then say: "Which of these steps would you like to manage or improve with Odoo?" End your message with the exact token: SHOW_MODULES
 
@@ -439,9 +498,10 @@ Strict conversation flow:
 - EMAIL: Thank them genuinely. Tell them Agitech will be in touch within 24 hours with a tailored proposal. Keep it to 2 sentences. End with: LEAD_CAPTURED
 
 Rules:
-- Never use markdown bold, asterisks, or bullet points — plain text only
+- Only use bullet points in the WEBSITE step, never elsewhere
+- Never use markdown bold or asterisks
 - Workflow line must use → arrows on its own line
-- Max 4 sentences of prose per reply
+- Max 4 bullet points or sentences per reply
 - Never ask two questions at once`;
   }
 
@@ -489,19 +549,41 @@ Rules:
 
       const isLeadCaptured = reply.includes('LEAD_CAPTURED');
       const showModules = reply.includes('SHOW_MODULES');
+      const needsConfirm = STEPS[step] === 'website' || STEPS[step] === 'workflow';
 
       let extra = null;
+
       if (showModules) {
-        // Extract workflow steps from leadData to use as module options
         const wfSteps = leadData.workflow
           ? leadData.workflow.split(/→|->/).map(s => s.trim()).filter(Boolean)
           : ODOO_MODULES;
         extra = renderModulePicker(wfSteps);
+      } else if (needsConfirm) {
+        // Disable input while user clicks Yes/No
+        inputEl.disabled = true;
+        sendBtn.disabled = true;
+        inputEl.placeholder = 'Use the buttons above...';
+        extra = renderConfirmButtons(
+          // YES — move forward
+          () => {
+            step = Math.min(step + 1, STEPS.length - 1);
+            setProgress(STEPS[step]);
+            inputEl.disabled = false;
+            inputEl.placeholder = 'Reply to Agitech Advisor...';
+            sendBtn.disabled = false;
+            busy = false;
+            handleSend('Yes, that\'s correct');
+          },
+          // NO — let user type correction (input already re-enabled in renderConfirmButtons)
+          () => {
+            busy = false;
+          }
+        );
       }
 
       addMsg(reply, 'bot', extra);
 
-      // Save workflow from confirm step
+      // Save workflow line
       if (STEPS[step] === 'confirm') {
         const wfLine = reply.split('\n').find(l =>
           (l.includes('→') || l.includes('->')) && l.split(/→|->/).length >= 2
@@ -518,22 +600,18 @@ Rules:
         step = STEPS.indexOf('modules');
         inputEl.disabled = true;
         inputEl.placeholder = 'Use the selector above...';
-      } else {
+      } else if (!needsConfirm) {
         step = Math.min(step + 1, STEPS.length - 1);
-        if (inputEl.disabled && STEPS[step] !== 'modules') {
-          inputEl.disabled = false;
-          inputEl.placeholder = 'Reply to Agitech Advisor...';
-        }
+        setProgress(STEPS[step]);
       }
 
-      setProgress(STEPS[step]);
     } catch (e) {
       setTyping(false);
       addMsg('Oops, something went wrong. Please try again.', 'bot');
     }
 
-    busy = false;
     if (!inputEl.disabled) {
+      busy = false;
       sendBtn.disabled = false;
       inputEl.focus();
     }
