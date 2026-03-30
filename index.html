@@ -254,6 +254,41 @@
   const sendBtn = document.getElementById('sendBtn');
   const progressEl = document.getElementById('progress');
 
+  function renderWorkflow(text) {
+    // Detect arrow-based workflow: A → B → C
+    const arrowPattern = /(.+?)\s*[→\-\>]+\s*(.+)/;
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    const steps = [];
+
+    for (const line of lines) {
+      if (line.includes('→') || line.includes('->')) {
+        const parts = line.split(/→|->/).map(s => s.trim()).filter(Boolean);
+        steps.push(...parts);
+      }
+    }
+
+    if (steps.length < 2) return null;
+
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;';
+
+    steps.forEach((s, i) => {
+      const box = document.createElement('div');
+      box.style.cssText = 'background:#2a2a3a;border:1px solid #4a4a7a;border-radius:8px;padding:6px 12px;font-size:13px;color:#c0b8ff;white-space:nowrap;';
+      box.textContent = s;
+      wrapper.appendChild(box);
+
+      if (i < steps.length - 1) {
+        const arrow = document.createElement('span');
+        arrow.style.cssText = 'color:#7C6EE6;font-size:16px;';
+        arrow.textContent = '→';
+        wrapper.appendChild(arrow);
+      }
+    });
+
+    return wrapper;
+  }
+
   function addMsg(text, role) {
     const row = document.createElement('div');
     row.className = 'msg-row ' + role;
@@ -264,7 +299,47 @@
 
     const bubble = document.createElement('div');
     bubble.className = 'msg-bubble';
-    bubble.textContent = text;
+
+    if (role === 'bot') {
+      // Strip markdown bold/italic, render clean text
+      const clean = text
+        .replace(/\*\*(.*?)\*\*/g, '$1')
+        .replace(/\*(.*?)\*/g, '$1')
+        .replace(/`(.*?)`/g, '$1');
+
+      // Split off any workflow line
+      const workflowLineIndex = clean.split('\n').findIndex(l =>
+        (l.includes('→') || l.includes('->')) && l.split(/→|->/).length >= 2
+      );
+
+      if (workflowLineIndex !== -1) {
+        const lines = clean.split('\n');
+        const beforeLines = lines.slice(0, workflowLineIndex).join('\n').trim();
+        const workflowLine = lines[workflowLineIndex];
+        const afterLines = lines.slice(workflowLineIndex + 1).join('\n').trim();
+
+        if (beforeLines) {
+          const p = document.createElement('p');
+          p.textContent = beforeLines;
+          p.style.marginBottom = '8px';
+          bubble.appendChild(p);
+        }
+
+        const wf = renderWorkflow(workflowLine);
+        if (wf) bubble.appendChild(wf);
+
+        if (afterLines) {
+          const p = document.createElement('p');
+          p.textContent = afterLines;
+          p.style.marginTop = '8px';
+          bubble.appendChild(p);
+        }
+      } else {
+        bubble.textContent = clean;
+      }
+    } else {
+      bubble.textContent = text;
+    }
 
     if (role === 'bot') {
       row.appendChild(av);
@@ -305,22 +380,23 @@
   }
 
   function systemPrompt() {
-    return `You are a warm, conversational lead qualification assistant for Agotech, an Odoo implementation company. 
+    return `You are a warm, conversational lead qualification assistant for Agitech, an Odoo implementation company.
 
 Current step: ${STEPS[step]}
 
 Strict conversation flow:
-- WEBSITE: User just gave their website URL. Use the web_search tool to look it up and write 4-5 sentences about what the company does. Be process oriented: You Produce A, for client B and sell it via C. End with "Does that sound right?"
-- CONFIRM: User confirmed or corrected. Acknowledge briefly, show a workflow of the company process. 
+- WEBSITE: The user just gave their website URL. You MUST use the web_search tool first to research it. After searching, write 2-3 sentences about what the company does (what they produce, who their clients are, how they sell). Then on a separate line, output their business process using ONLY this format: Step1 → Step2 → Step3 → Step4. Use real steps from their business. End with "Does that sound right?"
+- CONFIRM: User confirmed or corrected. Say one warm acknowledging sentence, then ask: "What's your main reason for exploring Odoo right now?"
 - Q1: Listen to their answer. Then ask: "Got it! And roughly how many people are on your team?"
 - Q2: Listen. Then ask warmly: "Almost there — what email should we use to follow up with you?"
 - EMAIL: Thank them genuinely. Say the team will reach out within 24 hours. Keep it to 2 sentences.
 
 Rules:
-- Be warm and human, never robotic
-- Max 3 sentences per reply
+- Never use markdown bold (**text**), asterisks, or bullet points — plain text only
+- The workflow MUST be on its own line using → arrows, no other format
+- Max 3 sentences of prose per reply
 - Never ask two questions at once
-- When in EMAIL step, end your reply with this exact line: LEAD_CAPTURED`;
+- When in EMAIL step, end your reply with this exact token on its own line: LEAD_CAPTURED`;
   }
 
   async function callAPI(userMessage) {
