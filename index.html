@@ -242,8 +242,8 @@
 </div>
 
 <script>
-  const STEPS = ['website', 'confirm', 'q1', 'q2', 'email', 'done'];
-  const PROGRESS = { website: 10, confirm: 30, q1: 55, q2: 75, email: 90, done: 100 };
+  const STEPS = ['intro', 'website', 'confirm', 'workflow', 'confirm_workflow', 'modules', 'email', 'done'];
+  const PROGRESS = { intro: 5, website: 20, confirm: 40, workflow: 55, confirm_workflow: 70, modules: 85, email: 95, done: 100 };
   let step = 0;
   let history = [];
   let leadData = {};
@@ -254,42 +254,92 @@
   const sendBtn = document.getElementById('sendBtn');
   const progressEl = document.getElementById('progress');
 
-  function renderWorkflow(text) {
-    // Detect arrow-based workflow: A → B → C
-    const arrowPattern = /(.+?)\s*[→\-\>]+\s*(.+)/;
-    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-    const steps = [];
+  const ODOO_MODULES = [
+    'CRM & Sales', 'Purchase & Procurement', 'Inventory & Warehouse',
+    'Manufacturing', 'Accounting & Invoicing', 'Project Management',
+    'HR & Payroll', 'E-commerce', 'Point of Sale', 'Field Service'
+  ];
 
-    for (const line of lines) {
-      if (line.includes('→') || line.includes('->')) {
-        const parts = line.split(/→|->/).map(s => s.trim()).filter(Boolean);
-        steps.push(...parts);
-      }
-    }
+  function setProgress(stepName) {
+    progressEl.style.width = (PROGRESS[stepName] || 0) + '%';
+  }
 
-    if (steps.length < 2) return null;
-
+  function renderWorkflow(line) {
+    const parts = line.split(/→|->/).map(s => s.trim()).filter(Boolean);
+    if (parts.length < 2) return null;
     const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;';
-
-    steps.forEach((s, i) => {
+    wrapper.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:10px 0;';
+    parts.forEach((s, i) => {
       const box = document.createElement('div');
       box.style.cssText = 'background:#2a2a3a;border:1px solid #4a4a7a;border-radius:8px;padding:6px 12px;font-size:13px;color:#c0b8ff;white-space:nowrap;';
       box.textContent = s;
       wrapper.appendChild(box);
-
-      if (i < steps.length - 1) {
+      if (i < parts.length - 1) {
         const arrow = document.createElement('span');
-        arrow.style.cssText = 'color:#7C6EE6;font-size:16px;';
+        arrow.style.cssText = 'color:#7C6EE6;font-size:16px;flex-shrink:0;';
         arrow.textContent = '→';
         wrapper.appendChild(arrow);
       }
     });
-
     return wrapper;
   }
 
-  function addMsg(text, role) {
+  function renderModulePicker(workflowSteps) {
+    const container = document.createElement('div');
+    container.style.cssText = 'margin-top:12px;';
+
+    const label = document.createElement('p');
+    label.style.cssText = 'font-size:13px;color:#888;margin-bottom:10px;';
+    label.textContent = 'Select all that apply — then click Confirm';
+    container.appendChild(label);
+
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;';
+
+    const options = workflowSteps.length > 0 ? workflowSteps : ODOO_MODULES;
+    const selected = new Set();
+
+    options.forEach(opt => {
+      const btn = document.createElement('button');
+      btn.textContent = opt;
+      btn.style.cssText = 'background:#2a2a3a;border:1px solid #3a3a5a;border-radius:20px;padding:7px 14px;font-size:13px;color:#aaa;cursor:pointer;transition:all 0.15s;font-family:inherit;';
+      btn.addEventListener('click', () => {
+        if (selected.has(opt)) {
+          selected.delete(opt);
+          btn.style.background = '#2a2a3a';
+          btn.style.borderColor = '#3a3a5a';
+          btn.style.color = '#aaa';
+        } else {
+          selected.add(opt);
+          btn.style.background = '#3a2e6a';
+          btn.style.borderColor = '#7C6EE6';
+          btn.style.color = '#c0b8ff';
+        }
+      });
+      grid.appendChild(btn);
+    });
+
+    container.appendChild(grid);
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = 'Confirm selection →';
+    confirmBtn.style.cssText = 'background:#7C6EE6;border:none;border-radius:9px;padding:9px 18px;font-size:14px;color:#fff;cursor:pointer;font-family:inherit;transition:background 0.2s;';
+    confirmBtn.addEventListener('mouseenter', () => confirmBtn.style.background = '#6558d4');
+    confirmBtn.addEventListener('mouseleave', () => confirmBtn.style.background = '#7C6EE6');
+    confirmBtn.addEventListener('click', () => {
+      if (selected.size === 0) return;
+      const chosen = Array.from(selected).join(', ');
+      leadData.modules = chosen;
+      container.style.opacity = '0.4';
+      container.style.pointerEvents = 'none';
+      handleSend(chosen);
+    });
+
+    container.appendChild(confirmBtn);
+    return container;
+  }
+
+  function addMsg(text, role, extra) {
     const row = document.createElement('div');
     row.className = 'msg-row ' + role;
 
@@ -301,53 +351,45 @@
     bubble.className = 'msg-bubble';
 
     if (role === 'bot') {
-      // Strip markdown bold/italic, render clean text
       const clean = text
         .replace(/\*\*(.*?)\*\*/g, '$1')
         .replace(/\*(.*?)\*/g, '$1')
-        .replace(/`(.*?)`/g, '$1');
+        .replace(/`(.*?)`/g, '$1')
+        .replace('SHOW_MODULES', '').trim();
 
-      // Split off any workflow line
-      const workflowLineIndex = clean.split('\n').findIndex(l =>
+      const lines = clean.split('\n');
+      const workflowIdx = lines.findIndex(l =>
         (l.includes('→') || l.includes('->')) && l.split(/→|->/).length >= 2
       );
 
-      if (workflowLineIndex !== -1) {
-        const lines = clean.split('\n');
-        const beforeLines = lines.slice(0, workflowLineIndex).join('\n').trim();
-        const workflowLine = lines[workflowLineIndex];
-        const afterLines = lines.slice(workflowLineIndex + 1).join('\n').trim();
-
-        if (beforeLines) {
+      if (workflowIdx !== -1) {
+        const before = lines.slice(0, workflowIdx).join('\n').trim();
+        const after = lines.slice(workflowIdx + 1).join('\n').trim();
+        if (before) {
           const p = document.createElement('p');
-          p.textContent = beforeLines;
-          p.style.marginBottom = '8px';
+          p.style.marginBottom = '4px';
+          p.textContent = before;
           bubble.appendChild(p);
         }
-
-        const wf = renderWorkflow(workflowLine);
+        const wf = renderWorkflow(lines[workflowIdx]);
         if (wf) bubble.appendChild(wf);
-
-        if (afterLines) {
+        if (after) {
           const p = document.createElement('p');
-          p.textContent = afterLines;
           p.style.marginTop = '8px';
+          p.textContent = after;
           bubble.appendChild(p);
         }
       } else {
         bubble.textContent = clean;
       }
+
+      if (extra) bubble.appendChild(extra);
     } else {
       bubble.textContent = text;
     }
 
-    if (role === 'bot') {
-      row.appendChild(av);
-      row.appendChild(bubble);
-    } else {
-      row.appendChild(bubble);
-      row.appendChild(av);
-    }
+    if (role === 'bot') { row.appendChild(av); row.appendChild(bubble); }
+    else { row.appendChild(bubble); row.appendChild(av); }
 
     messagesEl.appendChild(row);
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -375,68 +417,65 @@
     }
   }
 
-  function setProgress(stepName) {
-    progressEl.style.width = (PROGRESS[stepName] || 0) + '%';
-  }
-
   function systemPrompt() {
-    return `You are a warm, conversational lead qualification assistant for Agitech, an Odoo implementation company.
+    return `You are an AI assistant built on Claude, set up by Agitech, an Odoo implementation company. Your goal is to prepare a clear document summarizing what the client wants and how their business works — to save everyone's time before the first meeting.
 
 Current step: ${STEPS[step]}
 
 Strict conversation flow:
-- WEBSITE: The user just gave their website URL. You MUST use the web_search tool first to research it. After searching, write 2-3 sentences about what the company does (what they produce, who their clients are, how they sell). Then on a separate line, output their business process using ONLY this format: Step1 → Step2 → Step3 → Step4. Use real steps from their business. End with "Does that sound right?"
-- CONFIRM: User confirmed or corrected. Say one warm acknowledging sentence, then ask: "What's your main reason for exploring Odoo right now?"
-- Q1: Listen to their answer. Then ask: "Got it! And roughly how many people are on your team?"
-- Q2: Listen. Then ask warmly: "Almost there — what email should we use to follow up with you?"
-- EMAIL: Thank them genuinely. Say the team will reach out within 24 hours. Keep it to 2 sentences.
+
+- INTRO: Introduce yourself warmly. Say you are an AI model based on Claude, set up by Agitech. Explain in one sentence that your goal is to prepare a document capturing their business process and needs to save everyone's time. Then ask: "To get started, what is your company website?"
+
+- WEBSITE: The user just gave their website URL. You MUST use the web_search tool first to research it. After searching, write 4-5 sentences about what the company does — what they produce, who their clients are, how they sell. End with "Does that sound right?"
+
+- CONFIRM: User confirmed or corrected the description. Now output their business process on a single line using ONLY this format: Step1 → Step2 → Step3 → Step4. The process MUST always include: (1) client ordering, (2) buying or producing, (3) invoicing or client paying. Use real labels from their business. End with "Does that sound right?"
+
+- CONFIRM_WORKFLOW: User confirmed or corrected the workflow. Say one short warm sentence. Then say: "Which of these steps would you like to manage or improve with Odoo?" End your message with the exact token: SHOW_MODULES
+
+- MODULES: User has selected modules from the list. Acknowledge their choices warmly in 1 sentence. Then ask: "What email should we use to send you the summary?"
+
+- EMAIL: Thank them genuinely. Tell them Agitech will be in touch within 24 hours with a tailored proposal. Keep it to 2 sentences. End with: LEAD_CAPTURED
 
 Rules:
-- Never use markdown bold (**text**), asterisks, or bullet points — plain text only
-- The workflow MUST be on its own line using → arrows, no other format
-- Max 3 sentences of prose per reply
-- Never ask two questions at once
-- When in EMAIL step, end your reply with this exact token on its own line: LEAD_CAPTURED`;
+- Never use markdown bold, asterisks, or bullet points — plain text only
+- Workflow line must use → arrows on its own line
+- Max 4 sentences of prose per reply
+- Never ask two questions at once`;
   }
 
   async function callAPI(userMessage) {
     history.push({ role: 'user', content: userMessage });
-
     const body = {
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
+      max_tokens: 1024,
       system: systemPrompt(),
       tools: [{ type: 'web_search_20250305', name: 'web_search' }],
       messages: history
     };
-
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-
     const data = await res.json();
     const textBlocks = data.content && data.content.filter(b => b.type === 'text');
     const textBlock = textBlocks && textBlocks[textBlocks.length - 1];
-    const reply = textBlock ? textBlock.text : "Sorry, something went wrong.";
+    const reply = textBlock ? textBlock.text : 'Sorry, something went wrong.';
     history.push({ role: 'assistant', content: data.content });
     return reply;
   }
 
-  async function handleSend() {
-    const text = inputEl.value.trim();
+  async function handleSend(overrideText) {
+    const text = overrideText || inputEl.value.trim();
     if (!text || busy) return;
 
     busy = true;
     sendBtn.disabled = true;
-    inputEl.value = '';
+    if (!overrideText) inputEl.value = '';
 
-    addMsg(text, 'user');
+    if (!overrideText) addMsg(text, 'user');
 
     if (STEPS[step] === 'website') leadData.website = text;
-    if (STEPS[step] === 'q1') leadData.q1 = text;
-    if (STEPS[step] === 'q2') leadData.q2 = text;
     if (STEPS[step] === 'email') leadData.email = text;
 
     setTyping(true);
@@ -446,18 +485,42 @@ Rules:
       setTyping(false);
 
       const isLeadCaptured = reply.includes('LEAD_CAPTURED');
-      const cleanReply = reply.replace('LEAD_CAPTURED', '').trim();
+      const showModules = reply.includes('SHOW_MODULES');
 
-      addMsg(cleanReply, 'bot');
+      let extra = null;
+      if (showModules) {
+        // Extract workflow steps from leadData to use as module options
+        const wfSteps = leadData.workflow
+          ? leadData.workflow.split(/→|->/).map(s => s.trim()).filter(Boolean)
+          : ODOO_MODULES;
+        extra = renderModulePicker(wfSteps);
+      }
+
+      addMsg(reply, 'bot', extra);
+
+      // Save workflow from confirm step
+      if (STEPS[step] === 'confirm') {
+        const wfLine = reply.split('\n').find(l =>
+          (l.includes('→') || l.includes('->')) && l.split(/→|->/).length >= 2
+        );
+        if (wfLine) leadData.workflow = wfLine;
+      }
 
       if (isLeadCaptured) {
         step = STEPS.indexOf('done');
         inputEl.disabled = true;
         inputEl.placeholder = '✓ All done!';
         console.log('Lead captured:', leadData);
-        // TODO: send leadData to your Odoo CRM here
+      } else if (showModules) {
+        step = STEPS.indexOf('modules');
+        inputEl.disabled = true;
+        inputEl.placeholder = 'Use the selector above...';
       } else {
         step = Math.min(step + 1, STEPS.length - 1);
+        if (inputEl.disabled && STEPS[step] !== 'modules') {
+          inputEl.disabled = false;
+          inputEl.placeholder = 'Reply to Agitech Advisor...';
+        }
       }
 
       setProgress(STEPS[step]);
@@ -473,11 +536,27 @@ Rules:
     }
   }
 
-  sendBtn.addEventListener('click', handleSend);
+  sendBtn.addEventListener('click', () => handleSend());
   inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') handleSend(); });
 
-  setProgress('website');
-  addMsg("Hi! I'm here to help figure out if Odoo is a good fit for your business. To kick things off — what's your company website?", 'bot');
+  // Kick off with intro — Claude introduces itself
+  setProgress('intro');
+  (async () => {
+    setTyping(true);
+    try {
+      const reply = await callAPI('start');
+      setTyping(false);
+      addMsg(reply, 'bot');
+      step = STEPS.indexOf('website');
+      setProgress('website');
+    } catch(e) {
+      setTyping(false);
+      addMsg("Hi! I'm the Agitech Advisor. What's your company website?", 'bot');
+    }
+    busy = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
+  })();
 </script>
 </body>
 </html>
