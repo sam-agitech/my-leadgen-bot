@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Odoo Lead Qualification</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f5f5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1rem;
+    }
+    .chat-card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      width: 100%;
+      max-width: 480px;
+      overflow: hidden;
+    }
+    .chat-header {
+      background: #534AB7;
+      color: #fff;
+      padding: 1rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .chat-header .avatar {
+      width: 36px;
+      height: 36px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .chat-header .info p { font-size: 13px; opacity: 0.8; }
+    .chat-header .info h3 { font-size: 15px; font-weight: 600; }
+    .progress-bar {
+      height: 3px;
+      background: #e8e8f0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: #534AB7;
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+    .chat-messages {
+      padding: 1.25rem;
+      min-height: 340px;
+      max-height: 420px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .msg {
+      max-width: 82%;
+      padding: 10px 14px;
+      border-radius: 18px;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    .msg.bot {
+      background: #f0f0f8;
+      color: #1a1a2e;
+      border-bottom-left-radius: 4px;
+      align-self: flex-start;
+    }
+    .msg.user {
+      background: #534AB7;
+      color: #fff;
+      border-bottom-right-radius: 4px;
+      align-self: flex-end;
+    }
+    .msg.typing {
+      background: #f0f0f8;
+      color: #888;
+      align-self: flex-start;
+      font-style: italic;
+      font-size: 13px;
+      border-bottom-left-radius: 4px;
+    }
+    .chat-input-row {
+      display: flex;
+      gap: 8px;
+      padding: 1rem 1.25rem;
+      border-top: 1px solid #f0f0f0;
+    }
+    .chat-input-row input {
+      flex: 1;
+      padding: 10px 14px;
+      border-radius: 22px;
+      border: 1.5px solid #e0e0ee;
+      font-size: 14px;
+      outline: none;
+      font-family: inherit;
+      color: #1a1a2e;
+      background: #fafafa;
+      transition: border-color 0.2s;
+    }
+    .chat-input-row input:focus { border-color: #534AB7; background: #fff; }
+    .send-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #534AB7;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+    .send-btn:hover { background: #3C3489; }
+    .send-btn:disabled { background: #ccc; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+<div class="chat-card">
+  <div class="chat-header">
+    <div class="avatar">🤖</div>
+    <div class="info">
+      <h3>Odoo Advisor</h3>
+      <p>Let's find the right fit for you</p>
+    </div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+  <div class="chat-messages" id="messages"></div>
+  <div class="chat-input-row">
+    <input id="input" type="text" placeholder="Type your answer..." autocomplete="off" />
+    <button class="send-btn" id="sendBtn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"></line>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<script>
+  const STEPS = ['website', 'confirm', 'q1', 'q2', 'email', 'done'];
+  const PROGRESS = { website: 10, confirm: 30, q1: 55, q2: 75, email: 90, done: 100 };
+  let step = 0;
+  let history = [];
+  let leadData = {};
+  let busy = false;
+
+  const messagesEl = document.getElementById('messages');
+  const inputEl = document.getElementById('input');
+  const sendBtn = document.getElementById('sendBtn');
+  const progressEl = document.getElementById('progress');
+
+  function addMsg(text, role) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + role;
+    div.textContent = text;
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return div;
+  }
+
+  function setTyping(on) {
+    const existing = document.getElementById('typing');
+    if (on && !existing) {
+      const el = addMsg('Thinking...', 'typing');
+      el.id = 'typing';
+    } else if (!on && existing) {
+      existing.remove();
+    }
+  }
+
+  function setProgress(stepName) {
+    progressEl.style.width = (PROGRESS[stepName] || 0) + '%';
+  }
+
+  function systemPrompt() {
+    return `You are a warm, conversational lead qualification assistant for an Odoo ERP implementation company. 
+
+Current step: ${STEPS[step]}
+
+Strict conversation flow:
+- WEBSITE: User just gave their website URL. Use the web_search tool to look it up and write 2-3 sentences about what the company does. End with "Does that sound right?"
+- CONFIRM: User confirmed or corrected. Acknowledge briefly, then ask: "What's your main reason for exploring Odoo right now?"
+- Q1: Listen to their answer. Then ask: "Got it! And roughly how many people are on your team?"
+- Q2: Listen. Then ask warmly: "Almost there — what email should we use to follow up with you?"
+- EMAIL: Thank them genuinely. Say the team will reach out within 24 hours. Keep it to 2 sentences.
+
+Rules:
+- Be warm and human, never robotic
+- Max 3 sentences per reply
+- Never ask two questions at once
+- When in EMAIL step, end your reply with this exact line: LEAD_CAPTURED`;
+  }
+
+  async function callAPI(userMessage) {
+    history.push({ role: 'user', content: userMessage });
+
+    const body = {
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      system: systemPrompt(),
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+      messages: history
+    };
+
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    const data = await res.json();
+    const textBlock = data.content && data.content.find(b => b.type === 'text');
+    const reply = textBlock ? textBlock.text : "Sorry, something went wrong.";
+    history.push({ role: 'assistant', content: data.content });
+    return reply;
+  }
+
+  async function handleSend() {
+    const text = inputEl.value.trim();
+    if (!text || busy) return;
+
+    busy = true;
+    sendBtn.disabled = true;
+    inputEl.value = '';
+
+    addMsg(text, 'user');
+
+    if (STEPS[step] === 'website') leadData.website = text;
+    if (STEPS[step] === 'q1') leadData.q1 = text;
+    if (STEPS[step] === 'q2') leadData.q2 = text;
+    if (STEPS[step] === 'email') leadData.email = text;
+
+    setTyping(true);
+
+    try {
+      const reply = await callAPI(text);
+      setTyping(false);
+
+      const isLeadCaptured = reply.includes('LEAD_CAPTURED');
+      const cleanReply = reply.replace('LEAD_CAPTURED', '').trim();
+
+      addMsg(cleanReply, 'bot');
+
+      if (isLeadCaptured) {
+        step = STEPS.indexOf('done');
+        inputEl.disabled = true;
+        inputEl.placeholder = '✓ All done!';
+        console.log('Lead captured:', leadData);
+        // TODO: send leadData to your Odoo CRM here
+      } else {
+        step = Math.min(step + 1, STEPS.length - 1);
+      }
+
+      setProgress(STEPS[step]);
+    } catch (e) {
+      setTyping(false);
+      addMsg('Oops, something went wrong. Please try again.', 'bot');
+    }
+
+    busy = false;
+    if (!inputEl.disabled) {
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
+  }
+
+  sendBtn.addEventListener('click', handleSend);
+  inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') handleSend(); });
+
+  setProgress('website');
+  addMsg("Hi! I'm here to help figure out if Odoo is a good fit for your business. To kick things off — what's your company website?", 'bot');
+</script>
+</body>
+</html>
