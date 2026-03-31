@@ -433,9 +433,6 @@
       leadData.modules = chosen;
       container.style.opacity = '0.4';
       container.style.pointerEvents = 'none';
-      // #region agent log (debug)
-      try { console.debug('DBG568a1e modulePicker confirm click', { chosenLen: chosen.length, selectedCount: selected.size, step: STEPS[step], busy, inputDisabled: inputEl.disabled }); } catch {}
-      // #endregion
       // Important: when the module picker is shown, the input is disabled, so `busy`
       // might never be reset by the usual end-of-handleSend() path. Ensure we can proceed.
       busy = false;
@@ -684,11 +681,6 @@ Règles :
     const stepName = STEPS[step];
     const tools = stepName === 'website' ? [{ type: 'web_search_20250305', name: 'web_search' }] : [];
 
-    // #region agent log (debug)
-    try { console.debug('DBG568a1e callAPI start', { stepName, hasTools: tools.length > 0, toolsCount: tools.length, userMessageLen: (userMessage || '').length, historyLen: history.length }); } catch {}
-    fetch('http://127.0.0.1:7265/ingest/efea978b-9701-42e8-b74f-e48b9c367085',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'568a1e'},body:JSON.stringify({sessionId:'568a1e',runId:'pre-fix',hypothesisId:'A',location:'index.html:callAPI:start',message:'callAPI start',data:{stepName,hasTools:tools.length>0,toolsCount:tools.length,userMessageLen:(userMessage||'').length,historyLen:history.length},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-
     const body = {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
@@ -707,10 +699,6 @@ Règles :
       });
       data = await res.json();
     } catch (err) {
-      // #region agent log (debug)
-      try { console.debug('DBG568a1e callAPI fetch/json failed', { stepName, err: String(err && err.message ? err.message : err) }); } catch {}
-      fetch('http://127.0.0.1:7265/ingest/efea978b-9701-42e8-b74f-e48b9c367085',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'568a1e'},body:JSON.stringify({sessionId:'568a1e',runId:'pre-fix',hypothesisId:'C',location:'index.html:callAPI:fetch',message:'callAPI fetch/json failed',data:{stepName,err:String(err && err.message ? err.message : err)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       throw err;
     }
 
@@ -731,11 +719,6 @@ Règles :
       return `Erreur API (HTTP ${status}).`;
     }
 
-    // #region agent log (debug)
-    try { console.debug('DBG568a1e callAPI response parsed', { stepName, httpStatus: res?.status, ok: res?.ok, contentIsArray: Array.isArray(data?.content), typeCounts, textBlocksCount: textBlocks.length, replyLen: reply.length }); } catch {}
-    fetch('http://127.0.0.1:7265/ingest/efea978b-9701-42e8-b74f-e48b9c367085',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'568a1e'},body:JSON.stringify({sessionId:'568a1e',runId:'pre-fix',hypothesisId:'A',location:'index.html:callAPI:response',message:'callAPI response parsed',data:{stepName,httpStatus:res.status,ok:res.ok,contentIsArray:Array.isArray(data?.content),typeCounts,textBlocksCount:textBlocks.length,replyLen:reply.length,hasToolUse:!!typeCounts.tool_use},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-
     const finalReply = !res.ok
       ? prettyAnthropicError(data, res.status)
       : (reply || (typeCounts.tool_use && !typeCounts.text
@@ -751,9 +734,6 @@ Règles :
 
   async function handleSend(overrideText) {
     const text = overrideText || inputEl.value.trim();
-    // #region agent log (debug)
-    try { console.debug('DBG568a1e handleSend entry', { step: STEPS[step], busy, inputDisabled: inputEl.disabled, override: !!overrideText, textLen: text.length }); } catch {}
-    // #endregion
     if (!text || busy) return;
 
     busy = true;
@@ -824,9 +804,6 @@ Règles :
           ? leadData.workflow.split(/→|->/).map(s => s.trim()).filter(Boolean)
           : ODOO_MODULES;
         extra = renderModulePicker(wfSteps);
-        // #region agent log (debug)
-        try { console.debug('DBG568a1e showModules renderModulePicker', { stepName, busy, inputDisabled: inputEl.disabled, wantsModules, asksScope }); } catch {}
-        // #endregion
       } else if (showConfirmButtons) {
         // Disable input while user clicks Yes/No
         inputEl.disabled = true;
@@ -901,9 +878,6 @@ Règles :
         step = Math.min(step + 1, STEPS.length - 1);
         setProgress(STEPS[step]);
       }
-      // #region agent log (debug)
-      try { console.debug('DBG568a1e handleSend after-branch', { step: STEPS[step], busy, inputDisabled: inputEl.disabled, showModules, showConfirmButtons, showClientProblemButtons, isLeadCaptured }); } catch {}
-      // #endregion
 
     } catch (e) {
       setTyping(false);
