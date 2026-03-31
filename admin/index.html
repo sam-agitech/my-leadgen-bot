@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin — Agitech Leadgen</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      background: #0f0f14;
+      color: #ececec;
+    }
+    header {
+      padding: 18px 22px;
+      border-bottom: 1px solid #262636;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: 0.2px; }
+    .row { display: flex; gap: 14px; }
+    .pill {
+      border: 1px solid #2f2f44;
+      background: #171724;
+      color: #cfcfe6;
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+    .btn {
+      background: #7C6EE6;
+      border: none;
+      color: white;
+      padding: 9px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    main { padding: 18px 22px; display: grid; grid-template-columns: 420px 1fr; gap: 16px; }
+    .card {
+      border: 1px solid #262636;
+      background: #12121b;
+      border-radius: 14px;
+      padding: 14px;
+      min-height: 120px;
+    }
+    .card h2 { margin: 0 0 10px 0; font-size: 13px; color: #cfcfe6; font-weight: 650; }
+    .muted { color: #9a9ab3; font-size: 12px; }
+    input[type="password"]{
+      width: 320px;
+      max-width: 55vw;
+      background: #12121b;
+      border: 1px solid #2f2f44;
+      color: #ececec;
+      padding: 9px 10px;
+      border-radius: 10px;
+      outline: none;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid #1f1f2c; font-size: 12px; }
+    th { text-align: left; color: #bfbfe0; font-weight: 650; }
+    tr:hover td { background: #151522; cursor: pointer; }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #0f0f14;
+      border: 1px solid #262636;
+      padding: 12px;
+      border-radius: 12px;
+      margin: 10px 0 0 0;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .kpi { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid #262636; border-radius: 12px; background: #101018; }
+    .kpi .v { font-size: 18px; font-weight: 750; }
+    .kpi .l { font-size: 12px; color: #9a9ab3; }
+    @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="row" style="align-items:center;">
+      <h1>Admin — Agitech Leadgen</h1>
+      <span id="status" class="pill">Déconnecté</span>
+    </div>
+    <div class="row" style="align-items:center;">
+      <input id="token" type="password" placeholder="ADMIN_TOKEN (Bearer)" />
+      <button id="connect" class="btn">Connecter</button>
+      <button id="refresh" class="btn" disabled>Rafraîchir</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Funnel</h2>
+      <div class="split" style="margin-bottom:10px;">
+        <div class="kpi"><div class="v" id="kpiConvs">—</div><div class="l">Conversations</div></div>
+        <div class="kpi"><div class="v" id="kpiMsgs">—</div><div class="l">Messages</div></div>
+      </div>
+      <div class="kpi"><div class="v" id="kpiLeads">—</div><div class="l">Leads (email)</div></div>
+      <pre id="funnelJson" class="muted">—</pre>
+    </section>
+
+    <section class="card">
+      <h2>Conversations</h2>
+      <div class="muted" style="margin-bottom:10px;">Cliquez une ligne pour afficher le transcript.</div>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Créée</th>
+            <th>Lead</th>
+            <th>Website</th>
+          </tr>
+        </thead>
+        <tbody id="conversationsBody">
+          <tr><td colspan="4" class="muted">—</td></tr>
+        </tbody>
+      </table>
+      <pre id="conversationDetail" class="muted">Sélectionnez une conversation…</pre>
+    </section>
+  </main>
+
+  <script>
+    const els = {
+      token: document.getElementById('token'),
+      connect: document.getElementById('connect'),
+      refresh: document.getElementById('refresh'),
+      status: document.getElementById('status'),
+      funnelJson: document.getElementById('funnelJson'),
+      kpiConvs: document.getElementById('kpiConvs'),
+      kpiMsgs: document.getElementById('kpiMsgs'),
+      kpiLeads: document.getElementById('kpiLeads'),
+      conversationsBody: document.getElementById('conversationsBody'),
+      conversationDetail: document.getElementById('conversationDetail')
+    };
+
+    let adminToken = sessionStorage.getItem('admin_token') || '';
+    if (adminToken) els.token.value = adminToken;
+
+    function authHeaders() {
+      return adminToken ? { Authorization: `Bearer ${adminToken}` } : {};
+    }
+
+    async function apiGet(path) {
+      const r = await fetch(path, { headers: authHeaders() });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      return data;
+    }
+
+    function setConnected(on) {
+      els.status.textContent = on ? 'Connecté' : 'Déconnecté';
+      els.status.style.background = on ? '#16301f' : '#171724';
+      els.status.style.borderColor = on ? '#2e6a40' : '#2f2f44';
+      els.status.style.color = on ? '#bff0cc' : '#cfcfe6';
+      els.refresh.disabled = !on;
+    }
+
+    async function loadFunnel() {
+      const data = await apiGet('/api/admin/funnel');
+      els.funnelJson.textContent = JSON.stringify(data.byStep, null, 2);
+      els.kpiConvs.textContent = data.totals?.conversations ?? '—';
+      els.kpiMsgs.textContent = data.totals?.messages ?? '—';
+      els.kpiLeads.textContent = data.totals?.leads_with_email ?? '—';
+    }
+
+    function fmtDate(iso) {
+      try { return new Date(iso).toLocaleString(); } catch { return iso || ''; }
+    }
+
+    async function loadConversations() {
+      const data = await apiGet('/api/admin/conversations?limit=50&offset=0');
+      els.conversationsBody.innerHTML = '';
+      for (const row of data.rows || []) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${(row.id || '').slice(0, 8)}…</td>
+          <td>${fmtDate(row.created_at)}</td>
+          <td>${row.lead_email ? row.lead_email : '—'}</td>
+          <td>${row.lead_website ? row.lead_website : '—'}</td>
+        `;
+        tr.addEventListener('click', async () => {
+          els.conversationDetail.textContent = 'Chargement…';
+          try {
+            const detail = await apiGet('/api/admin/conversations/' + row.id);
+            els.conversationDetail.textContent = JSON.stringify(detail, null, 2);
+          } catch (e) {
+            els.conversationDetail.textContent = 'Erreur: ' + (e?.message || e);
+          }
+        });
+        els.conversationsBody.appendChild(tr);
+      }
+      if (!data.rows?.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="4" class="muted">Aucune conversation.</td>`;
+        els.conversationsBody.appendChild(tr);
+      }
+    }
+
+    async function refreshAll() {
+      await Promise.all([loadFunnel(), loadConversations()]);
+    }
+
+    els.connect.addEventListener('click', async () => {
+      adminToken = els.token.value.trim();
+      sessionStorage.setItem('admin_token', adminToken);
+      try {
+        await refreshAll();
+        setConnected(true);
+      } catch (e) {
+        setConnected(false);
+        alert('Connexion impossible: ' + (e?.message || e));
+      }
+    });
+
+    els.refresh.addEventListener('click', async () => {
+      try {
+        await refreshAll();
+      } catch (e) {
+        alert('Erreur: ' + (e?.message || e));
+      }
+    });
+
+    setConnected(false);
+  </script>
+</body>
+</html>
+

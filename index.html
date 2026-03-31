@@ -306,6 +306,9 @@
   let history = [];
   let leadData = {};
   let busy = false;
+  let pendingCorrection = null; // null | 'website' | 'workflow'
+  let conversationId = null;
+  let lastTrackedStepName = null;
 
   const messagesEl = document.getElementById('messages');
   const inputEl = document.getElementById('input');
@@ -328,6 +331,150 @@
 
   function setProgress(stepName) {
     progressEl.style.width = (PROGRESS[stepName] || 0) + '%';
+  }
+
+  function getUtmParams() {
+    const p = new URLSearchParams(window.location.search || '');
+    return {
+      utmSource: p.get('utm_source'),
+      utmMedium: p.get('utm_medium'),
+      utmCampaign: p.get('utm_campaign'),
+      utmTerm: p.get('utm_term'),
+      utmContent: p.get('utm_content'),
+    };
+  }
+
+  async function trackStartIfNeeded() {
+    try {
+      const existing = localStorage.getItem('agitech_conversation_id');
+      if (existing) {
+        conversationId = existing;
+        return;
+      }
+
+      const payload = {
+        landingUrl: window.location.href,
+        referrer: document.referrer || null,
+        userAgent: navigator.userAgent || null,
+        ...getUtmParams()
+      };
+
+      const r = await fetch('/api/track/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data?.conversationId) {
+        conversationId = data.conversationId;
+        localStorage.setItem('agitech_conversation_id', conversationId);
+      }
+    } catch {
+      // Tracking must never break chat UX
+    }
+  }
+
+  async function trackMessage(role, contentText, stepName) {
+    try {
+      if (!conversationId) return;
+      if (typeof contentText !== 'string' || !contentText.trim()) return;
+      await fetch('/api/track/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId,
+          role,
+          step: stepName || null,
+          contentText
+        })
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  async function trackStep(fromStep, toStep, reason) {
+    try {
+      if (!conversationId) return;
+      await fetch('/api/track/step', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId,
+          fromStep: fromStep || null,
+          toStep: toStep || null,
+          reason: reason || null
+        })
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  async function trackLead() {
+    try {
+      if (!conversationId) return;
+      await fetch('/api/track/lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId,
+          website: leadData.website || null,
+          clientProblem: leadData.clientProblem || null,
+          scope: leadData.scope || null,
+          modules: leadData.modules || null,
+          email: leadData.email || null,
+          status: 'captured'
+        })
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  function currentStepName() {
+    return STEPS[step] || null;
+  }
+
+  function setStepIndex(nextIndex, reason) {
+    const from = currentStepName();
+    step = nextIndex;
+    const to = currentStepName();
+    setProgress(to);
+    if (from !== to) trackStep(from, to, reason || null);
+  }
+
+  function validateAndNormalize(stepName, input) {
+    const raw = (input || '').trim();
+    if (!raw) return { ok: false, value: '', error: 'Merci d’entrer une réponse.' };
+
+    if (stepName === 'website') {
+      let value = raw;
+      // Normalize domains like "example.com" -> "https://example.com"
+      if (!/^https?:\/\//i.test(value)) value = `https://${value}`;
+      try {
+        const u = new URL(value);
+        const host = u.hostname || '';
+        // Basic plausibility: must contain a dot and a 2+ char TLD
+        if (!host.includes('.')) return { ok: false, value: '', error: 'Je n’ai pas reconnu une URL. Pouvez-vous entrer le site web complet (ex: exemple.com) ?' };
+        const parts = host.split('.').filter(Boolean);
+        const tld = parts[parts.length - 1] || '';
+        if (tld.length < 2) return { ok: false, value: '', error: 'Je n’ai pas reconnu une URL. Pouvez-vous entrer le site web complet (ex: exemple.com) ?' };
+        return { ok: true, value: u.toString(), error: '' };
+      } catch {
+        return { ok: false, value: '', error: 'Je n’ai pas reconnu une URL. Pouvez-vous entrer le site web complet (ex: exemple.com) ?' };
+      }
+    }
+
+    if (stepName === 'email') {
+      const email = raw;
+      const ok = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email);
+      if (!ok) return { ok: false, value: '', error: 'Je n’ai pas reconnu un email valide. Pouvez-vous réessayer ?' };
+      return { ok: true, value: email, error: '' };
+    }
+
+    return { ok: true, value: raw, error: '' };
   }
 
   function renderWorkflow(line) {
@@ -374,10 +521,7 @@
     noBtn.addEventListener('click', () => {
       container.style.opacity = '0.4';
       container.style.pointerEvents = 'none';
-      inputEl.disabled = false;
-      inputEl.placeholder = 'Écrivez votre correction...';
-      inputEl.focus();
-      sendBtn.disabled = false;
+      onNo();
     });
 
     container.appendChild(yesBtn);
@@ -437,8 +581,7 @@
       // might never be reset by the usual end-of-handleSend() path. Ensure we can proceed.
       busy = false;
       // We are leaving SCOPE selection and moving to the RESUME step.
-      step = STEPS.indexOf('resume');
-      setProgress(STEPS[step]);
+      setStepIndex(STEPS.indexOf('resume'), 'modules_confirmed');
       inputEl.disabled = false;
       sendBtn.disabled = false;
       inputEl.placeholder = 'Votre réponse...';
@@ -512,18 +655,21 @@
 
     const bubble = document.createElement('div');
     bubble.className = 'msg-bubble';
+    let cleanText = text || '';
 
     if (role === 'bot') {
       const clean = text
         .replace(/\*\*(.*?)\*\*/g, '$1')
         .replace(/\*(.*?)\*/g, '$1')
         .replace(/`(.*?)`/g, '$1')
+        .replace('SHOW_CONFIRM_WEBSITE', '')
         .replace('SHOW_MODULES', '')
         .replace('SHOW_WORKFLOW_BUTTONS', '')
         .replace('SHOW_CLIENT_PROBLEM', '')
         .replace('SHOW_CALENDLY_BUTTON', '')
         .replace('LEAD_CAPTURED', '')
         .trim();
+      cleanText = clean;
 
       const lines = clean.split('\n').filter(l => l.trim());
       const workflowIdx = lines.findIndex(l =>
@@ -552,6 +698,11 @@
 
     messagesEl.appendChild(row);
     messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    // fire-and-forget tracking
+    const stepName = currentStepName();
+    trackMessage(role === 'bot' ? 'assistant' : 'user', cleanText, stepName);
+
     return row;
   }
 
@@ -627,11 +778,12 @@ FLUX DE CONVERSATION :
   Commencez toujours par "D'après mes recherches, votre entreprise"
   Rédigez 2 à 3 puces concises (max 15 mots) : ce que fait votre entreprise, qui sont vos clients, comment vous vendez.
   Terminez par : "Est-ce que cela correspond bien à votre activité ?"
+  Terminez votre message par le token exact : SHOW_CONFIRM_WEBSITE
   Si l'URL est manquante, introuvable ou illisible : insistez gentiment et demandez-en une autre. Ne passez pas à l'étape suivante sans URL valide.
 
 - CONFIRM_WEBSITE
   Si confirmé : répondez "Super !" et passez à WORKFLOW.
-  Si non confirmé : demandez ce qui est inexact dans la description de votre entreprise, corrigez, puis demandez à nouveau si c'est correct.
+  Si non confirmé : demandez ce qui est inexact dans la description de votre entreprise, corrigez, puis demandez à nouveau si c'est correct. Terminez alors par le token exact : SHOW_CONFIRM_WEBSITE
 
 - WORKFLOW
   Affichez le processus métier avec des libellés tirés de l'activité réelle de votre entreprise.
@@ -643,7 +795,7 @@ FLUX DE CONVERSATION :
 
 - CONFIRM_WORKFLOW
   Si confirmé : répondez "Super !" et passez à CLIENT_PROBLEM.
-  Si non confirmé : demandez ce qui ne correspond pas dans le processus de votre entreprise, corrigez, puis demandez à nouveau si c'est correct.
+  Si non confirmé : demandez ce qui ne correspond pas dans le processus de votre entreprise, corrigez, puis demandez à nouveau si c'est correct. Terminez alors par le token exact : SHOW_WORKFLOW_BUTTONS
 
 - CLIENT_PROBLEM
   Dites : "Pour mieux vous orienter, quelle est la raison principale de votre visite aujourd'hui ?"
@@ -733,53 +885,91 @@ Règles :
   }
 
   async function handleSend(overrideText) {
-    const text = overrideText || inputEl.value.trim();
-    if (!text || busy) return;
+    const userText = overrideText || inputEl.value.trim();
+    if (!userText || busy) return;
 
     busy = true;
     sendBtn.disabled = true;
     if (!overrideText) inputEl.value = '';
 
-    if (!overrideText) addMsg(text, 'user');
+    if (!overrideText) addMsg(userText, 'user');
 
-    if (STEPS[step] === 'website') leadData.website = text;
-    if (STEPS[step] === 'email') leadData.email = text;
+    // If user is correcting, force the appropriate confirm step (deterministic).
+    if (!overrideText && pendingCorrection) {
+      if (pendingCorrection === 'website') {
+        setStepIndex(STEPS.indexOf('confirm_website'), 'correction_website');
+      } else if (pendingCorrection === 'workflow') {
+        setStepIndex(STEPS.indexOf('confirm_workflow'), 'correction_workflow');
+      }
+      pendingCorrection = null;
+    }
+
+    // Validate/normalize before calling Claude
+    const currentStep = STEPS[step];
+    const v = validateAndNormalize(currentStep, userText);
+    if (!v.ok) {
+      setTyping(false);
+      addMsg(v.error, 'bot');
+      busy = false;
+      sendBtn.disabled = false;
+      inputEl.focus();
+      return;
+    }
+    const sendText = v.value || userText;
+
+    // Validate & normalize before calling Claude (deterministic robustness)
+    if (!overrideText) {
+      const currentStep = STEPS[step];
+      const v = validateAndNormalize(currentStep, text);
+      if (!v.ok) {
+        setTyping(false);
+        addMsg(v.error, 'bot');
+        busy = false;
+        sendBtn.disabled = false;
+        inputEl.focus();
+        return;
+      }
+      if (v.value !== text) {
+        // Use normalized value without altering the user's displayed message
+        history.pop(); // remove the raw user message we just pushed in callAPI later
+        history.push({ role: 'user', content: v.value });
+      }
+    }
+
+    if (STEPS[step] === 'website') leadData.website = sendText;
+    if (STEPS[step] === 'email') leadData.email = sendText;
+    if (STEPS[step] === 'email') trackLead();
 
     setTyping(true);
 
     try {
       const requestStep = STEPS[step];
-      const reply = await callAPI(text);
+      const reply = await callAPI(sendText);
       setTyping(false);
 
       const isLeadCaptured = reply.includes('LEAD_CAPTURED');
-      const asksScope = /Quelles étapes de votre entreprise sont concernées/i.test(reply);
-      // Si Claude envoie déjà le contenu de l'étape SCOPE (token ou question),
-      // on bascule l'étape avant de décider quel UI afficher.
-      if (reply.includes('SHOW_MODULES') || asksScope) {
-        step = STEPS.indexOf('scope');
-        setProgress(STEPS[step]);
+      // Deterministic step alignment based on tokens
+      if (reply.includes('SHOW_CLIENT_PROBLEM')) {
+        setStepIndex(STEPS.indexOf('client_problem'), 'token_SHOW_CLIENT_PROBLEM');
+      }
+      if (reply.includes('SHOW_MODULES')) {
+        setStepIndex(STEPS.indexOf('scope'), 'token_SHOW_MODULES');
       }
 
       const stepName = STEPS[step];
+      const wantsConfirmWebsite = reply.includes('SHOW_CONFIRM_WEBSITE');
       const wantsModules = reply.includes('SHOW_MODULES');
       const wantsWorkflowButtons = reply.includes('SHOW_WORKFLOW_BUTTONS');
-      const asksWorkflowConfirm = /Est-ce que cela correspond à votre réalité\s*\?/i.test(reply);
-      const asksClientProblem = /raison principale de votre visite/i.test(reply);
+      const wantsClientProblem = reply.includes('SHOW_CLIENT_PROBLEM');
       const wantsCalendlyButton = reply.includes('SHOW_CALENDLY_BUTTON');
 
-      // Affichage déterministe des boutons :
-      // - WEBSITE : toujours afficher ✓/✎
-      // - WORKFLOW : afficher ✓/✎ uniquement si la question de validation est posée
-      // - CLIENT_PROBLEM : afficher les 3 choix uniquement si la question "raison principale..." est posée
+      // UI is token-driven only (deterministic, no wording heuristics)
       const showConfirmButtons =
-        stepName === 'website' ||
-        (stepName === 'workflow' && (asksWorkflowConfirm || wantsWorkflowButtons));
+        ((stepName === 'website' || stepName === 'confirm_website') && wantsConfirmWebsite) ||
+        ((stepName === 'workflow' || stepName === 'confirm_workflow') && wantsWorkflowButtons);
       const showClientProblemButtons =
-        stepName === 'client_problem' && asksClientProblem && !leadData.clientProblemAsked;
-
-      // SCOPE : afficher le sélecteur si token OU si la question SCOPE est détectée
-      const showModules = stepName === 'scope' && (wantsModules || asksScope);
+        stepName === 'client_problem' && wantsClientProblem && !leadData.clientProblemAsked;
+      const showModules = stepName === 'scope' && wantsModules;
 
       let extra = null;
 
@@ -794,8 +984,7 @@ Règles :
           inputEl.placeholder = 'Votre réponse...';
 
           // After the choice, Claude asks a follow-up question (still part of client_problem flow).
-          step = STEPS.indexOf('client_problem');
-          setProgress(STEPS[step]);
+          setStepIndex(STEPS.indexOf('client_problem'), 'client_problem_choice');
           busy = false;
           handleSend(choice);
         });
@@ -809,18 +998,17 @@ Règles :
         inputEl.disabled = true;
         sendBtn.disabled = true;
         inputEl.placeholder = 'Utilisez les boutons ci-dessus...';
-        const confirmingStep = STEPS[step];
+        const confirmingStep = wantsConfirmWebsite ? 'website' : 'workflow';
         extra = renderConfirmButtons(
           // YES — move forward
           () => {
             if (confirmingStep === 'website') {
-              step = STEPS.indexOf('workflow');
+              setStepIndex(STEPS.indexOf('workflow'), 'confirm_yes_website');
             } else if (confirmingStep === 'workflow') {
-              step = STEPS.indexOf('client_problem');
+              setStepIndex(STEPS.indexOf('client_problem'), 'confirm_yes_workflow');
             } else {
-              step = Math.min(step + 1, STEPS.length - 1);
+              setStepIndex(Math.min(step + 1, STEPS.length - 1), 'confirm_yes');
             }
-            setProgress(STEPS[step]);
             inputEl.disabled = false;
             inputEl.placeholder = 'Votre réponse...';
             sendBtn.disabled = false;
@@ -829,13 +1017,20 @@ Règles :
           },
           // NO — let user type correction (input already re-enabled in renderConfirmButtons)
           () => {
+            pendingCorrection = confirmingStep;
             busy = false;
+            inputEl.disabled = false;
+            sendBtn.disabled = false;
+            inputEl.placeholder = confirmingStep === 'website'
+              ? "Expliquez ce qui est inexact (1 phrase)."
+              : "Qu’est-ce qui ne correspond pas dans votre processus (1 phrase) ?";
+            inputEl.focus();
           }
         );
       }
 
       // Add Calendly button when requested (typically in EMAIL step).
-      if (wantsCalendlyButton) {
+      if (stepName === 'email' && wantsCalendlyButton) {
         extra = renderCalendlyButton();
       }
 
@@ -846,8 +1041,7 @@ Règles :
       if (requestStep === 'resume') {
         const deepSearchEmailQuestion = "Je vais maintenant réaliser un Deep Search afin d'obtenir plus d'éléments sur votre entreprise et vous envoyer un rapport par email. Quel email faut-il utiliser pour vous envoyer le rapport ?";
         addMsg(deepSearchEmailQuestion, 'bot');
-        step = STEPS.indexOf('email');
-        setProgress(STEPS[step]);
+        setStepIndex(STEPS.indexOf('email'), 'after_resume_force_email');
         inputEl.disabled = false;
         sendBtn.disabled = false;
         inputEl.placeholder = 'Votre réponse...';
@@ -862,7 +1056,7 @@ Règles :
       }
 
       if (isLeadCaptured) {
-        step = STEPS.indexOf('done');
+        setStepIndex(STEPS.indexOf('done'), 'lead_captured');
         inputEl.disabled = true;
         inputEl.placeholder = '✓ Tout est bon !';
         console.log('Lead captured:', leadData);
@@ -871,12 +1065,11 @@ Règles :
         inputEl.disabled = true;
         inputEl.placeholder = 'Utilisez le sélecteur ci-dessus...';
       } else if (showClientProblemButtons) {
-        step = STEPS.indexOf('client_problem');
+        setStepIndex(STEPS.indexOf('client_problem'), 'show_client_problem_buttons');
         inputEl.disabled = true;
         inputEl.placeholder = 'Choisissez une option ci-dessus...';
       } else if (!showConfirmButtons) {
-        step = Math.min(step + 1, STEPS.length - 1);
-        setProgress(STEPS[step]);
+        setStepIndex(Math.min(step + 1, STEPS.length - 1), 'auto_advance');
       }
 
     } catch (e) {
@@ -895,7 +1088,8 @@ Règles :
   inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') handleSend(); });
 
   async function playIntro() {
-    setProgress('intro');
+    await trackStartIfNeeded();
+    setStepIndex(STEPS.indexOf('intro'), 'intro_start');
     inputEl.disabled = true;
     sendBtn.disabled = true;
     busy = true;
@@ -908,8 +1102,7 @@ Règles :
       await new Promise(resolve => setTimeout(resolve, 200));
     }
 
-    step = STEPS.indexOf('website');
-    setProgress('website');
+    setStepIndex(STEPS.indexOf('website'), 'intro_done');
     busy = false;
     inputEl.disabled = false;
     sendBtn.disabled = false;
