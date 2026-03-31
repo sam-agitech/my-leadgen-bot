@@ -843,15 +843,24 @@ Règles :
 
     let res;
     let data;
+    const ac = new AbortController();
+    const timeoutMs = 120000;
+    const to = setTimeout(() => ac.abort(), timeoutMs);
     try {
       res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        signal: ac.signal
       });
       data = await res.json();
     } catch (err) {
+      if (err && err.name === 'AbortError') {
+        throw new Error(`Délai dépassé (${timeoutMs / 1000}s). Réessayez ou vérifiez le déploiement de /api/chat.`);
+      }
       throw err;
+    } finally {
+      clearTimeout(to);
     }
 
     const contentArr = Array.isArray(data?.content) ? data.content : [];
@@ -916,25 +925,6 @@ Règles :
       return;
     }
     const sendText = v.value || userText;
-
-    // Validate & normalize before calling Claude (deterministic robustness)
-    if (!overrideText) {
-      const currentStep = STEPS[step];
-      const v = validateAndNormalize(currentStep, text);
-      if (!v.ok) {
-        setTyping(false);
-        addMsg(v.error, 'bot');
-        busy = false;
-        sendBtn.disabled = false;
-        inputEl.focus();
-        return;
-      }
-      if (v.value !== text) {
-        // Use normalized value without altering the user's displayed message
-        history.pop(); // remove the raw user message we just pushed in callAPI later
-        history.push({ role: 'user', content: v.value });
-      }
-    }
 
     if (STEPS[step] === 'website') leadData.website = sendText;
     if (STEPS[step] === 'email') leadData.email = sendText;
