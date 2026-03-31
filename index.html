@@ -704,14 +704,33 @@ Règles :
     const textBlocks = contentArr.filter(b => b.type === 'text');
     const reply = textBlocks.length > 0 ? textBlocks.map(b => b.text).join(' ').trim() : '';
 
+    function prettyAnthropicError(d, status) {
+      const err = d && d.error ? d.error : null;
+      const type = err && err.type ? err.type : null;
+      const message = err && err.message ? err.message : null;
+      if (status === 429) return `Limite de requêtes atteinte (429). Merci de réessayer dans quelques instants.`;
+      if (status === 401) return `Clé API invalide ou manquante (401).`;
+      if (status === 403) return `Accès refusé (403).`;
+      if (status >= 500) return `Erreur du serveur (HTTP ${status}). Merci de réessayer plus tard.`;
+      if (type || message) return `Erreur API (HTTP ${status})${type ? ` · ${type}` : ''}${message ? ` · ${message}` : ''}`;
+      return `Erreur API (HTTP ${status}).`;
+    }
+
     // #region agent log (debug)
     try { console.debug('DBG568a1e callAPI response parsed', { stepName, httpStatus: res?.status, ok: res?.ok, contentIsArray: Array.isArray(data?.content), typeCounts, textBlocksCount: textBlocks.length, replyLen: reply.length }); } catch {}
     fetch('http://127.0.0.1:7265/ingest/efea978b-9701-42e8-b74f-e48b9c367085',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'568a1e'},body:JSON.stringify({sessionId:'568a1e',runId:'pre-fix',hypothesisId:'A',location:'index.html:callAPI:response',message:'callAPI response parsed',data:{stepName,httpStatus:res.status,ok:res.ok,contentIsArray:Array.isArray(data?.content),typeCounts,textBlocksCount:textBlocks.length,replyLen:reply.length,hasToolUse:!!typeCounts.tool_use},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
 
-    const finalReply = reply || 'Désolé, une erreur est survenue.';
+    const finalReply = !res.ok
+      ? prettyAnthropicError(data, res.status)
+      : (reply || (typeCounts.tool_use && !typeCounts.text
+          ? `Je rencontre un souci technique lors de la recherche web. Merci de réessayer dans quelques instants.`
+          : 'Désolé, une erreur est survenue.'));
 
-    history.push({ role: 'assistant', content: data.content });
+    // Important: store only plain text in history.
+    // If we store raw content blocks (incl. tool blocks / non-text),
+    // follow-up turns can break or lead to empty text replies.
+    history.push({ role: 'assistant', content: finalReply });
     return finalReply;
   }
 
