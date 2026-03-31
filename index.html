@@ -480,6 +480,23 @@
     return container;
   }
 
+  function renderCalendlyButton() {
+    const container = document.createElement('div');
+    container.style.cssText = 'margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;';
+
+    const a = document.createElement('a');
+    a.href = 'https://calendly.com/sam-agitech/45';
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.textContent = 'Réserver un call avec Sam →';
+    a.style.cssText = 'background:#7C6EE6;border:none;border-radius:10px;padding:10px 14px;font-size:14px;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:8px;font-family:inherit;transition:background 0.2s;';
+    a.addEventListener('mouseenter', () => a.style.background = '#6558d4');
+    a.addEventListener('mouseleave', () => a.style.background = '#7C6EE6');
+
+    container.appendChild(a);
+    return container;
+  }
+
   function addMsg(text, role, extra) {
     const row = document.createElement('div');
     row.className = 'msg-row ' + role;
@@ -507,6 +524,7 @@
         .replace('SHOW_MODULES', '')
         .replace('SHOW_WORKFLOW_BUTTONS', '')
         .replace('SHOW_CLIENT_PROBLEM', '')
+        .replace('SHOW_CALENDLY_BUTTON', '')
         .replace('LEAD_CAPTURED', '')
         .trim();
 
@@ -647,8 +665,9 @@ FLUX DE CONVERSATION :
 
 - EMAIL
   Remerciez sincèrement en 2 phrases maximum.
-  Indiquez qu'Agitech reviendra d'ici 1h avec un rapport complet. Ajoutez que s'ils le souhaitent, ils peuvent déjà réserver un call avec Sam Gutman, gérant chez Agitech : https://calendly.com/sam-agitech/45
-  Terminez par le token exact : LEAD_CAPTURED
+  Indiquez que vous reviendrez vers le client dans l'heure avec un rapport complet.
+  Proposez (brièvement) de réserver un call avec Sam Gutman via Calendly.
+  Terminez votre message par les tokens exacts : SHOW_CALENDLY_BUTTON puis LEAD_CAPTURED
 
 Règles :
 - Gigi vouvoie toujours l'utilisateur : "vous", "votre", "vos" — jamais "tu", "ton", "ta"
@@ -767,6 +786,7 @@ Règles :
       const wantsWorkflowButtons = reply.includes('SHOW_WORKFLOW_BUTTONS');
       const asksWorkflowConfirm = /Est-ce que cela correspond à votre réalité\s*\?/i.test(reply);
       const asksClientProblem = /raison principale de votre visite/i.test(reply);
+      const wantsCalendlyButton = reply.includes('SHOW_CALENDLY_BUTTON');
 
       // Affichage déterministe des boutons :
       // - WEBSITE : toujours afficher ✓/✎
@@ -835,6 +855,11 @@ Règles :
             busy = false;
           }
         );
+      }
+
+      // Add Calendly button when requested (typically in EMAIL step).
+      if (wantsCalendlyButton) {
+        extra = renderCalendlyButton();
       }
 
       addMsg(reply, 'bot', extra);
