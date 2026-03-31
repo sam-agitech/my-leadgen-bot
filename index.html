@@ -598,7 +598,7 @@ FLUX DE CONVERSATION :
 - WEBSITE
   L'utilisateur vient de donner son URL. Faites une recherche web immédiatement.
   Commencez toujours par "D'après mes recherches, votre entreprise"
-  Rédigez 2 à 3 puces concises (max 10 mots) : ce que fait votre entreprise, qui sont vos clients, comment vous vendez.
+  Rédigez 2 à 3 puces concises (max 15 mots) : ce que fait votre entreprise, qui sont vos clients, comment vous vendez.
   Terminez par : "Est-ce que cela correspond bien à votre activité ?"
   Si l'URL est manquante, introuvable ou illisible : insistez gentiment et demandez-en une autre. Ne passez pas à l'étape suivante sans URL valide.
 
@@ -697,8 +697,9 @@ Règles :
       setTyping(false);
 
       const isLeadCaptured = reply.includes('LEAD_CAPTURED');
-      const showModules = reply.includes('SHOW_MODULES');
-      const showClientProblem = reply.includes('SHOW_CLIENT_PROBLEM');
+      const stepName = STEPS[step];
+      const showModules = stepName === 'scope' && reply.includes('SHOW_MODULES');
+      const showClientProblem = stepName === 'client_problem' && reply.includes('SHOW_CLIENT_PROBLEM');
       const needsConfirm = STEPS[step] === 'website' || STEPS[step] === 'workflow';
 
       let extra = null;
