@@ -611,9 +611,7 @@ FLUX DE CONVERSATION :
   Commencez par : "Je pense que le processus métier de votre entreprise ressemble à ceci :"
   Format sur sa propre ligne : Étape 1 → Étape 2 → Étape 3 → Étape 4 (jusqu'à 7 étapes si nécessaire)
   Le flux doit toujours couvrir : commande client, achat ou production, facturation ou paiement.
-  Terminez par : "Est-ce que cela correspond à votre réalité ?" et proposer 2 boutons (l'interface gère les boutons) :
-✓ Oui, c'est correct
-✎ Non, je veux corriger
+  Terminez par : "Est-ce que cela correspond à votre réalité ?" et terminez votre message par le token exact : SHOW_WORKFLOW_BUTTONS
 
 - CONFIRM_WORKFLOW
   Si confirmé : répondez "Super !" et passez à CLIENT_PROBLEM.
@@ -699,6 +697,7 @@ Règles :
       const isLeadCaptured = reply.includes('LEAD_CAPTURED');
       const stepName = STEPS[step];
       const wantsModules = reply.includes('SHOW_MODULES');
+      const wantsWorkflowButtons = reply.includes('SHOW_WORKFLOW_BUTTONS');
       const asksWorkflowConfirm = /Est-ce que cela correspond à votre réalité\s*\?/i.test(reply);
       const asksClientProblem = /raison principale de votre visite/i.test(reply);
 
@@ -706,7 +705,9 @@ Règles :
       // - WEBSITE : toujours afficher ✓/✎
       // - WORKFLOW : afficher ✓/✎ uniquement si la question de validation est posée
       // - CLIENT_PROBLEM : afficher les 3 choix uniquement si la question "raison principale..." est posée
-      const showConfirmButtons = stepName === 'website' || (stepName === 'workflow' && asksWorkflowConfirm);
+      const showConfirmButtons =
+        stepName === 'website' ||
+        (stepName === 'workflow' && (asksWorkflowConfirm || wantsWorkflowButtons));
       const showClientProblemButtons =
         stepName === 'client_problem' && asksClientProblem && !leadData.clientProblemAsked;
 
@@ -741,10 +742,17 @@ Règles :
         inputEl.disabled = true;
         sendBtn.disabled = true;
         inputEl.placeholder = 'Utilisez les boutons ci-dessus...';
+        const confirmingStep = STEPS[step];
         extra = renderConfirmButtons(
           // YES — move forward
           () => {
-            step = Math.min(step + 1, STEPS.length - 1);
+            if (confirmingStep === 'website') {
+              step = STEPS.indexOf('workflow');
+            } else if (confirmingStep === 'workflow') {
+              step = STEPS.indexOf('client_problem');
+            } else {
+              step = Math.min(step + 1, STEPS.length - 1);
+            }
             setProgress(STEPS[step]);
             inputEl.disabled = false;
             inputEl.placeholder = 'Votre réponse...';
