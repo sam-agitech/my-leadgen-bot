@@ -652,11 +652,14 @@ Règles :
 
   async function callAPI(userMessage) {
     history.push({ role: 'user', content: userMessage });
+    const stepName = STEPS[step];
     const body = {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
       system: systemPrompt(),
-      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+      // N'activer la recherche web qu'à l'étape WEBSITE pour éviter des tool_use
+      // inattendus (qui bloquent l'UI) aux autres étapes.
+      tools: stepName === 'website' ? [{ type: 'web_search_20250305', name: 'web_search' }] : [],
       messages: history
     };
     const res = await fetch('/api/chat', {
