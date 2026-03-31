@@ -1074,7 +1074,17 @@ Règles :
 
     } catch (e) {
       setTyping(false);
-      addMsg('Oups, une erreur s’est produite. Veuillez réessayer.', 'bot');
+      const msg = (e && e.message)
+        ? `Erreur réseau. ${e.message}`
+        : 'Erreur réseau. Veuillez réessayer.';
+      addMsg(msg, 'bot');
+
+      // Never leave the UI blocked after a network failure.
+      busy = false;
+      inputEl.disabled = false;
+      sendBtn.disabled = false;
+      inputEl.placeholder = 'Votre réponse...';
+      inputEl.focus();
     }
 
     if (!inputEl.disabled) {
