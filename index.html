@@ -286,7 +286,7 @@
     'confirm_workflow',
     'client_problem',
     'scope',
-    'modules',
+    'resume',
     'email',
     'done'
   ];
@@ -298,7 +298,7 @@
     confirm_workflow: 55,
     client_problem: 70,
     scope: 80,
-    modules: 90,
+    resume: 90,
     email: 97,
     done: 100
   };
@@ -439,6 +439,12 @@
       // Important: when the module picker is shown, the input is disabled, so `busy`
       // might never be reset by the usual end-of-handleSend() path. Ensure we can proceed.
       busy = false;
+      // We are leaving SCOPE selection and moving to the RESUME step.
+      step = STEPS.indexOf('resume');
+      setProgress(STEPS[step]);
+      inputEl.disabled = false;
+      sendBtn.disabled = false;
+      inputEl.placeholder = 'Votre réponse...';
       handleSend(chosen);
     });
 
@@ -617,39 +623,42 @@ FLUX DE CONVERSATION :
   Commencez par : "Je pense que le processus métier de votre entreprise ressemble à ceci :"
   Format sur sa propre ligne : Étape 1 → Étape 2 → Étape 3 → Étape 4 (jusqu'à 7 étapes si nécessaire)
   Le flux doit toujours couvrir : commande client, achat ou production, facturation ou paiement.
-  Terminez par : "Est-ce que cela correspond à votre réalité ?" et terminez votre message par le token exact : SHOW_WORKFLOW_BUTTONS
+  Terminez par : "Est-ce que cela correspond à votre réalité ?"
+  Terminez votre message par le token exact : SHOW_WORKFLOW_BUTTONS
 
 - CONFIRM_WORKFLOW
   Si confirmé : répondez "Super !" et passez à CLIENT_PROBLEM.
   Si non confirmé : demandez ce qui ne correspond pas dans le processus de votre entreprise, corrigez, puis demandez à nouveau si c'est correct.
 
 - CLIENT_PROBLEM
-  Dites que vous avez maintenant une bonne vue d'ensemble de votre entreprise et de vos processus.
-  Demandez la raison de leur visite avec 3 boutons (l'interface gère les boutons) :
-    1. Je veux implémenter Odoo dans ma PME
-    2. J'ai déjà Odoo mais j'ai besoin d'aide
-    3. Autre
+  Dites : "Pour mieux vous orienter, quelle est la raison principale de votre visite aujourd'hui ?"
   Terminez votre message par le token exact : SHOW_CLIENT_PROBLEM
 
 - SCOPE
-  Dites que vous comprenez bien leur situation.
-  Demandez quelles étapes de votre entreprise sont concernées, en précisant qu'il suffit de cliquer dessus.
+  Demandez quelles étapes de votre entreprise sont concernées, que voulez-vous prioriser ? Précisez qu'il suffit de cliquer dessus. Soyez bref.
   Terminez votre message par le token exact : SHOW_MODULES
 
-- MODULES
-  Accusez réception de leurs choix en une phrase chaleureuse faisant référence à votre entreprise.
-  Demandez : "Quel email faut-il utiliser pour vous envoyer le résumé de votre entreprise ?"
+- RESUME
+  Faites un résumé exécutif en 3 puces :
+  1) Site web (WEBSITE)
+  2) Objectif / situation (CLIENT_PROBLEM)
+  3) Priorités (SCOPE)
+  Puis demandez uniquement : "Quel email faut-il utiliser pour vous envoyer le rapport ?"
 
 - EMAIL
   Remerciez sincèrement en 2 phrases maximum.
   Indiquez qu'Agitech reprendra contact sous 24 heures avec une proposition personnalisée pour votre entreprise.
   Terminez par le token exact : LEAD_CAPTURED
 
+- BOOKING (optionnel, seulement si l'utilisateur le demande explicitement)
+  Proposez de réserver un rendez-vous avec Sam Gutman, dirigeant chez Agitech.
+  Fournissez le lien : https://calendly.com/sam-agitech/45
+
 Règles :
 - Gigi vouvoie toujours l'utilisateur : "vous", "votre", "vos" — jamais "tu", "ton", "ta"
 - Toujours parler de "votre entreprise", jamais "l'entreprise" ou "leur entreprise"
 - Jamais de markdown gras, jamais d'astérisques
-- Les puces uniquement à l'étape WEBSITE
+- Les puces uniquement à l'étape WEBSITE et RESUME
 - Le workflow sur sa propre ligne avec des flèches →
 - Maximum 4 puces ou phrases par réponse
 - Une seule question à la fois, toujours`;
@@ -828,13 +837,17 @@ Règles :
         inputEl.placeholder = '✓ Tout est bon !';
         console.log('Lead captured:', leadData);
       } else if (showModules) {
-        step = STEPS.indexOf('modules');
+        // We keep the step as 'scope' while the picker is visible.
         inputEl.disabled = true;
         inputEl.placeholder = 'Utilisez le sélecteur ci-dessus...';
       } else if (showClientProblemButtons) {
         step = STEPS.indexOf('client_problem');
         inputEl.disabled = true;
         inputEl.placeholder = 'Choisissez une option ci-dessus...';
+      } else if (STEPS[step] === 'resume') {
+        // RESUME just asked for email, so move to the EMAIL step.
+        step = STEPS.indexOf('email');
+        setProgress(STEPS[step]);
       } else if (!showConfirmButtons) {
         step = Math.min(step + 1, STEPS.length - 1);
         setProgress(STEPS[step]);
