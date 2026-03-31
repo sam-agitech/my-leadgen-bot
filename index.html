@@ -699,25 +699,24 @@ Règles :
       const isLeadCaptured = reply.includes('LEAD_CAPTURED');
       const stepName = STEPS[step];
       const wantsModules = reply.includes('SHOW_MODULES');
-      const wantsClientProblem = reply.includes('SHOW_CLIENT_PROBLEM');
-      const wantsWorkflowButtons = reply.includes('SHOW_WORKFLOW_BUTTONS');
+      const asksWorkflowConfirm = /Est-ce que cela correspond à votre réalité\s*\?/i.test(reply);
+      const asksClientProblem = /raison principale de votre visite/i.test(reply);
 
-      // Confirmer uniquement quand c'est pertinent :
-      // - Après WEBSITE (résumé du site)
-      // - Après WORKFLOW quand la question de validation est posée (ou token explicite)
-      const needsConfirm =
-        stepName === 'website' ||
-        (stepName === 'workflow' &&
-          (wantsWorkflowButtons || /Est-ce que cela correspond à votre réalité\s*\?/i.test(reply)));
+      // Affichage déterministe des boutons :
+      // - WEBSITE : toujours afficher ✓/✎
+      // - WORKFLOW : afficher ✓/✎ uniquement si la question de validation est posée
+      // - CLIENT_PROBLEM : afficher les 3 choix uniquement si la question "raison principale..." est posée
+      const showConfirmButtons = stepName === 'website' || (stepName === 'workflow' && asksWorkflowConfirm);
+      const showClientProblemButtons =
+        stepName === 'client_problem' && asksClientProblem && !leadData.clientProblemAsked;
 
-      // Tokens UI : on les accepte uniquement à l'étape attendue, pour éviter
-      // que Claude "saute" des écrans en avance.
+      // Tokens UI : SHOW_MODULES uniquement à l'étape SCOPE
       const showModules = stepName === 'scope' && wantsModules;
-      const showClientProblem = stepName === 'client_problem' && wantsClientProblem;
 
       let extra = null;
 
-      if (showClientProblem) {
+      if (showClientProblemButtons) {
+        leadData.clientProblemAsked = true;
         extra = renderClientProblemButtons((choice) => {
           leadData.clientProblem = choice;
           // Re-enable input before sending follow-up,
@@ -737,7 +736,7 @@ Règles :
           ? leadData.workflow.split(/→|->/).map(s => s.trim()).filter(Boolean)
           : ODOO_MODULES;
         extra = renderModulePicker(wfSteps);
-      } else if (needsConfirm) {
+      } else if (showConfirmButtons) {
         // Disable input while user clicks Yes/No
         inputEl.disabled = true;
         sendBtn.disabled = true;
@@ -779,11 +778,11 @@ Règles :
         step = STEPS.indexOf('modules');
         inputEl.disabled = true;
         inputEl.placeholder = 'Utilisez le sélecteur ci-dessus...';
-      } else if (showClientProblem) {
+      } else if (showClientProblemButtons) {
         step = STEPS.indexOf('client_problem');
         inputEl.disabled = true;
         inputEl.placeholder = 'Choisissez une option ci-dessus...';
-      } else if (!needsConfirm) {
+      } else if (!showConfirmButtons) {
         step = Math.min(step + 1, STEPS.length - 1);
         setProgress(STEPS[step]);
       }
