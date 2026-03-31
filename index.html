@@ -823,6 +823,19 @@ Règles :
 
       addMsg(reply, 'bot', extra);
 
+      // If we receive the RESUME text but the step machine is out of sync,
+      // force the transition to email and ask the Deep Search/email question deterministically.
+      const deepSearchEmailQuestion = "Je vais maintenant réaliser un Deep Search afin d'obtenir plus d'éléments sur votre entreprise et vous envoyer un rapport par email. Quel email faut-il utiliser pour vous envoyer le rapport ?";
+      const looksLikeResume = /Voici le résumé de votre situation/i.test(reply);
+      if (looksLikeResume) {
+        step = STEPS.indexOf('email');
+        setProgress(STEPS[step]);
+        if (!reply.includes(deepSearchEmailQuestion)) addMsg(deepSearchEmailQuestion, 'bot');
+        inputEl.disabled = false;
+        sendBtn.disabled = false;
+        inputEl.placeholder = 'Votre réponse...';
+      }
+
       // Save workflow line
       if (STEPS[step] === 'confirm_website' || STEPS[step] === 'workflow') {
         const wfLine = reply.split('\n').find(l =>
@@ -849,7 +862,6 @@ Règles :
         step = STEPS.indexOf('email');
         setProgress(STEPS[step]);
         // If Claude forgot to end with the exact email question, do it deterministically from the UI.
-        const deepSearchEmailQuestion = "Je vais maintenant réaliser un Deep Search afin d'obtenir plus d'éléments sur votre entreprise et vous envoyer un rapport par email. Quel email faut-il utiliser pour vous envoyer le rapport ?";
         if (!reply.includes(deepSearchEmailQuestion)) {
           addMsg(deepSearchEmailQuestion, 'bot');
         }
