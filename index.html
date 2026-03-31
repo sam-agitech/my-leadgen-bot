@@ -702,7 +702,14 @@ Règles :
       if (showClientProblem) {
         extra = renderClientProblemButtons((choice) => {
           leadData.clientProblem = choice;
-          step = STEPS.indexOf('scope');
+          // Re-enable input before sending follow-up,
+          // otherwise handleSend() can leave the UI stuck in busy/disabled state.
+          inputEl.disabled = false;
+          sendBtn.disabled = false;
+          inputEl.placeholder = 'Votre réponse...';
+
+          // After the choice, Claude asks a follow-up question (still part of client_problem flow).
+          step = STEPS.indexOf('client_problem');
           setProgress(STEPS[step]);
           busy = false;
           handleSend(choice);
