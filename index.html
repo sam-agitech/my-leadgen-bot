@@ -938,6 +938,7 @@ Règles :
       setTyping(false);
 
       const isLeadCaptured = reply.includes('LEAD_CAPTURED');
+      const forcedEmailFromResume = requestStep === 'resume';
       // Deterministic step alignment based on tokens
       if (reply.includes('SHOW_CLIENT_PROBLEM')) {
         setStepIndex(STEPS.indexOf('client_problem'), 'token_SHOW_CLIENT_PROBLEM');
@@ -952,6 +953,7 @@ Règles :
       const wantsWorkflowButtons = reply.includes('SHOW_WORKFLOW_BUTTONS');
       const wantsClientProblem = reply.includes('SHOW_CLIENT_PROBLEM');
       const wantsCalendlyButton = reply.includes('SHOW_CALENDLY_BUTTON');
+      const shouldShowCalendly = wantsCalendlyButton || isLeadCaptured;
 
       // UI is token-driven only (deterministic, no wording heuristics)
       const showConfirmButtons =
@@ -1019,16 +1021,24 @@ Règles :
         );
       }
 
-      // Add Calendly button when requested (typically in EMAIL step).
-      if (stepName === 'email' && wantsCalendlyButton) {
-        extra = renderCalendlyButton();
+      // Calendly: deterministic at the end (and if token is present)
+      if ((stepName === 'email' || isLeadCaptured) && shouldShowCalendly) {
+        const cal = renderCalendlyButton();
+        if (!extra) {
+          extra = cal;
+        } else {
+          const wrap = document.createElement('div');
+          wrap.appendChild(extra);
+          wrap.appendChild(cal);
+          extra = wrap;
+        }
       }
 
       addMsg(reply, 'bot', extra);
 
       // Deterministic rule: after RESUME, always ask for email from the UI,
       // regardless of what Claude wrote.
-      if (requestStep === 'resume') {
+      if (forcedEmailFromResume) {
         const deepSearchEmailQuestion = "Je vais maintenant réaliser un Deep Search afin d'obtenir plus d'éléments sur votre entreprise et vous envoyer un rapport par email. Quel email faut-il utiliser pour vous envoyer le rapport ?";
         addMsg(deepSearchEmailQuestion, 'bot');
         setStepIndex(STEPS.indexOf('email'), 'after_resume_force_email');
@@ -1058,7 +1068,7 @@ Règles :
         setStepIndex(STEPS.indexOf('client_problem'), 'show_client_problem_buttons');
         inputEl.disabled = true;
         inputEl.placeholder = 'Choisissez une option ci-dessus...';
-      } else if (!showConfirmButtons) {
+      } else if (!showConfirmButtons && !forcedEmailFromResume && STEPS[step] !== 'email') {
         setStepIndex(Math.min(step + 1, STEPS.length - 1), 'auto_advance');
       }
 
