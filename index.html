@@ -695,6 +695,14 @@ Règles :
       setTyping(false);
 
       const isLeadCaptured = reply.includes('LEAD_CAPTURED');
+      const asksScope = /Quelles étapes de votre entreprise sont concernées/i.test(reply);
+      // Si Claude envoie déjà le contenu de l'étape SCOPE (token ou question),
+      // on bascule l'étape avant de décider quel UI afficher.
+      if (reply.includes('SHOW_MODULES') || asksScope) {
+        step = STEPS.indexOf('scope');
+        setProgress(STEPS[step]);
+      }
+
       const stepName = STEPS[step];
       const wantsModules = reply.includes('SHOW_MODULES');
       const wantsWorkflowButtons = reply.includes('SHOW_WORKFLOW_BUTTONS');
@@ -711,8 +719,8 @@ Règles :
       const showClientProblemButtons =
         stepName === 'client_problem' && asksClientProblem && !leadData.clientProblemAsked;
 
-      // Tokens UI : SHOW_MODULES uniquement à l'étape SCOPE
-      const showModules = stepName === 'scope' && wantsModules;
+      // SCOPE : afficher le sélecteur si token OU si la question SCOPE est détectée
+      const showModules = stepName === 'scope' && (wantsModules || asksScope);
 
       let extra = null;
 
