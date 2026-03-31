@@ -734,6 +734,7 @@ Règles :
     setTyping(true);
 
     try {
+      const requestStep = STEPS[step];
       const reply = await callAPI(text);
       setTyping(false);
 
@@ -823,14 +824,13 @@ Règles :
 
       addMsg(reply, 'bot', extra);
 
-      // If we receive the RESUME text but the step machine is out of sync,
-      // force the transition to email and ask the Deep Search/email question deterministically.
-      const deepSearchEmailQuestion = "Je vais maintenant réaliser un Deep Search afin d'obtenir plus d'éléments sur votre entreprise et vous envoyer un rapport par email. Quel email faut-il utiliser pour vous envoyer le rapport ?";
-      const looksLikeResume = /Voici le résumé de votre situation/i.test(reply);
-      if (looksLikeResume) {
+      // Deterministic rule: after RESUME, always ask for email from the UI,
+      // regardless of what Claude wrote.
+      if (requestStep === 'resume') {
+        const deepSearchEmailQuestion = "Je vais maintenant réaliser un Deep Search afin d'obtenir plus d'éléments sur votre entreprise et vous envoyer un rapport par email. Quel email faut-il utiliser pour vous envoyer le rapport ?";
+        addMsg(deepSearchEmailQuestion, 'bot');
         step = STEPS.indexOf('email');
         setProgress(STEPS[step]);
-        if (!reply.includes(deepSearchEmailQuestion)) addMsg(deepSearchEmailQuestion, 'bot');
         inputEl.disabled = false;
         sendBtn.disabled = false;
         inputEl.placeholder = 'Votre réponse...';
@@ -857,17 +857,6 @@ Règles :
         step = STEPS.indexOf('client_problem');
         inputEl.disabled = true;
         inputEl.placeholder = 'Choisissez une option ci-dessus...';
-      } else if (STEPS[step] === 'resume') {
-        // RESUME just asked for email, so move to the EMAIL step.
-        step = STEPS.indexOf('email');
-        setProgress(STEPS[step]);
-        // If Claude forgot to end with the exact email question, do it deterministically from the UI.
-        if (!reply.includes(deepSearchEmailQuestion)) {
-          addMsg(deepSearchEmailQuestion, 'bot');
-        }
-        inputEl.disabled = false;
-        sendBtn.disabled = false;
-        inputEl.placeholder = 'Votre réponse...';
       } else if (!showConfirmButtons) {
         step = Math.min(step + 1, STEPS.length - 1);
         setProgress(STEPS[step]);
