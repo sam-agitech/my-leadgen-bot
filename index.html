@@ -698,9 +698,22 @@ Règles :
 
       const isLeadCaptured = reply.includes('LEAD_CAPTURED');
       const stepName = STEPS[step];
-      const showModules = stepName === 'scope' && reply.includes('SHOW_MODULES');
-      const showClientProblem = stepName === 'client_problem' && reply.includes('SHOW_CLIENT_PROBLEM');
-      const needsConfirm = STEPS[step] === 'website' || STEPS[step] === 'workflow';
+      const wantsModules = reply.includes('SHOW_MODULES');
+      const wantsClientProblem = reply.includes('SHOW_CLIENT_PROBLEM');
+      const wantsWorkflowButtons = reply.includes('SHOW_WORKFLOW_BUTTONS');
+
+      // Confirmer uniquement quand c'est pertinent :
+      // - Après WEBSITE (résumé du site)
+      // - Après WORKFLOW quand la question de validation est posée (ou token explicite)
+      const needsConfirm =
+        stepName === 'website' ||
+        (stepName === 'workflow' &&
+          (wantsWorkflowButtons || /Est-ce que cela correspond à votre réalité\s*\?/i.test(reply)));
+
+      // Tokens UI : on les accepte uniquement à l'étape attendue, pour éviter
+      // que Claude "saute" des écrans en avance.
+      const showModules = stepName === 'scope' && wantsModules;
+      const showClientProblem = stepName === 'client_problem' && wantsClientProblem;
 
       let extra = null;
 
