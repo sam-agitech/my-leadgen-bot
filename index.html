@@ -652,27 +652,52 @@ Règles :
   async function callAPI(userMessage) {
     history.push({ role: 'user', content: userMessage });
     const stepName = STEPS[step];
+    const tools = stepName === 'website' ? [{ type: 'web_search_20250305', name: 'web_search' }] : [];
+
+    // #region agent log (debug)
+    try { console.debug('DBG568a1e callAPI start', { stepName, hasTools: tools.length > 0, toolsCount: tools.length, userMessageLen: (userMessage || '').length, historyLen: history.length }); } catch {}
+    fetch('http://127.0.0.1:7265/ingest/efea978b-9701-42e8-b74f-e48b9c367085',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'568a1e'},body:JSON.stringify({sessionId:'568a1e',runId:'pre-fix',hypothesisId:'A',location:'index.html:callAPI:start',message:'callAPI start',data:{stepName,hasTools:tools.length>0,toolsCount:tools.length,userMessageLen:(userMessage||'').length,historyLen:history.length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+
     const body = {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
       system: systemPrompt(),
-      // N'activer la recherche web qu'à l'étape WEBSITE pour éviter des tool_use
-      // inattendus (qui bloquent l'UI) aux autres étapes.
-      tools: stepName === 'website' ? [{ type: 'web_search_20250305', name: 'web_search' }] : [],
       messages: history
     };
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    const data = await res.json();
-    const textBlocks = data.content && data.content.filter(b => b.type === 'text');
-    const reply = textBlocks && textBlocks.length > 0
-      ? textBlocks.map(b => b.text).join(' ').trim()
-      : 'Désolé, une erreur est survenue.';
+    if (tools.length > 0) body.tools = tools;
+
+    let res;
+    let data;
+    try {
+      res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      data = await res.json();
+    } catch (err) {
+      // #region agent log (debug)
+      try { console.debug('DBG568a1e callAPI fetch/json failed', { stepName, err: String(err && err.message ? err.message : err) }); } catch {}
+      fetch('http://127.0.0.1:7265/ingest/efea978b-9701-42e8-b74f-e48b9c367085',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'568a1e'},body:JSON.stringify({sessionId:'568a1e',runId:'pre-fix',hypothesisId:'C',location:'index.html:callAPI:fetch',message:'callAPI fetch/json failed',data:{stepName,err:String(err && err.message ? err.message : err)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      throw err;
+    }
+
+    const contentArr = Array.isArray(data?.content) ? data.content : [];
+    const typeCounts = contentArr.reduce((acc, b) => { const t = b?.type || 'unknown'; acc[t] = (acc[t]||0)+1; return acc; }, {});
+    const textBlocks = contentArr.filter(b => b.type === 'text');
+    const reply = textBlocks.length > 0 ? textBlocks.map(b => b.text).join(' ').trim() : '';
+
+    // #region agent log (debug)
+    try { console.debug('DBG568a1e callAPI response parsed', { stepName, httpStatus: res?.status, ok: res?.ok, contentIsArray: Array.isArray(data?.content), typeCounts, textBlocksCount: textBlocks.length, replyLen: reply.length }); } catch {}
+    fetch('http://127.0.0.1:7265/ingest/efea978b-9701-42e8-b74f-e48b9c367085',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'568a1e'},body:JSON.stringify({sessionId:'568a1e',runId:'pre-fix',hypothesisId:'A',location:'index.html:callAPI:response',message:'callAPI response parsed',data:{stepName,httpStatus:res.status,ok:res.ok,contentIsArray:Array.isArray(data?.content),typeCounts,textBlocksCount:textBlocks.length,replyLen:reply.length,hasToolUse:!!typeCounts.tool_use},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+
+    const finalReply = reply || 'Désolé, une erreur est survenue.';
+
     history.push({ role: 'assistant', content: data.content });
-    return reply;
+    return finalReply;
   }
 
   async function handleSend(overrideText) {
