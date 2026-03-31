@@ -848,9 +848,10 @@ Règles :
         // RESUME just asked for email, so move to the EMAIL step.
         step = STEPS.indexOf('email');
         setProgress(STEPS[step]);
-        // If Claude forgot to ask for the email, do it deterministically from the UI.
-        if (!/email/i.test(reply)) {
-          addMsg("Quel email faut-il utiliser pour vous envoyer le rapport ?", 'bot');
+        // If Claude forgot to end with the exact email question, do it deterministically from the UI.
+        const deepSearchEmailQuestion = "Je vais maintenant réaliser un Deep Search afin d'obtenir plus d'éléments sur votre entreprise et vous envoyer un rapport par email. Quel email faut-il utiliser pour vous envoyer le rapport ?";
+        if (!reply.includes(deepSearchEmailQuestion)) {
+          addMsg(deepSearchEmailQuestion, 'bot');
         }
         inputEl.disabled = false;
         sendBtn.disabled = false;
