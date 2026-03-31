@@ -848,6 +848,13 @@ Règles :
         // RESUME just asked for email, so move to the EMAIL step.
         step = STEPS.indexOf('email');
         setProgress(STEPS[step]);
+        // If Claude forgot to ask for the email, do it deterministically from the UI.
+        if (!/email/i.test(reply)) {
+          addMsg("Quel email faut-il utiliser pour vous envoyer le rapport ?", 'bot');
+        }
+        inputEl.disabled = false;
+        sendBtn.disabled = false;
+        inputEl.placeholder = 'Votre réponse...';
       } else if (!showConfirmButtons) {
         step = Math.min(step + 1, STEPS.length - 1);
         setProgress(STEPS[step]);
