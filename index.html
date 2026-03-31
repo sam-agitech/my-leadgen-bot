@@ -278,8 +278,30 @@
 </div>
 
 <script>
-  const STEPS = ['intro', 'website', 'confirm', 'workflow', 'confirm_workflow', 'modules', 'email', 'done'];
-  const PROGRESS = { intro: 5, website: 20, confirm: 40, workflow: 55, confirm_workflow: 70, modules: 85, email: 95, done: 100 };
+  const STEPS = [
+    'intro',
+    'website',
+    'confirm_website',
+    'workflow',
+    'confirm_workflow',
+    'client_problem',
+    'scope',
+    'modules',
+    'email',
+    'done'
+  ];
+  const PROGRESS = {
+    intro: 5,
+    website: 20,
+    confirm_website: 30,
+    workflow: 45,
+    confirm_workflow: 55,
+    client_problem: 70,
+    scope: 80,
+    modules: 90,
+    email: 97,
+    done: 100
+  };
   let step = 0;
   let history = [];
   let leadData = {};
@@ -418,6 +440,34 @@
     return container;
   }
 
+  function renderClientProblemButtons(onPick) {
+    const container = document.createElement('div');
+    container.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:12px;';
+
+    const options = [
+      "Je veux implémenter Odoo dans ma PME",
+      "J'ai déjà Odoo mais j'ai besoin d'aide",
+      "Autre"
+    ];
+
+    options.forEach(label => {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      btn.style.cssText = 'background:#2a2a3a;border:1px solid #3a3a5a;border-radius:14px;padding:10px 14px;font-size:14px;color:#ececec;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;';
+      btn.addEventListener('mouseenter', () => { btn.style.background = '#3a3a4a'; });
+      btn.addEventListener('mouseleave', () => { btn.style.background = '#2a2a3a'; });
+      btn.addEventListener('click', () => {
+        container.style.opacity = '0.4';
+        container.style.pointerEvents = 'none';
+        addMsg(label, 'user');
+        onPick(label);
+      });
+      container.appendChild(btn);
+    });
+
+    return container;
+  }
+
   function addMsg(text, role, extra) {
     const row = document.createElement('div');
     row.className = 'msg-row ' + role;
@@ -443,6 +493,7 @@
         .replace(/\*(.*?)\*/g, '$1')
         .replace(/`(.*?)`/g, '$1')
         .replace('SHOW_MODULES', '')
+        .replace('SHOW_CLIENT_PROBLEM', '')
         .replace('LEAD_CAPTURED', '')
         .trim();
 
@@ -535,28 +586,68 @@
   }
 
   function systemPrompt() {
-    return `Vous êtes un assistant IA basé sur Claude, mis en place par Agitech, une entreprise d’implémentation Odoo. Votre objectif est de préparer un document clair résumant ce que le client veut et comment son entreprise fonctionne — pour faire gagner du temps avant le premier rendez-vous. L’introduction est déjà gérée par l’interface : vous commencez donc votre travail à partir du moment où le site web de l’entreprise a été fourni.
+    return `Vous êtes Gigi, un assistant IA créé par Agitech, spécialiste de l'implémentation Odoo. Votre mission : préparer un résumé clair de votre entreprise et de vos processus pour optimiser le premier rendez-vous avec Sam, directeur chez Agitech.
+
+L'introduction est gérée par l'interface. Vous démarrez à partir du moment où le site web est fourni.
 
 Étape actuelle : ${STEPS[step]}
 
-Flux de conversation strict (vous intervenez à partir de l’étape WEBSITE) :
+FLUX DE CONVERSATION :
 
-- WEBSITE : L’utilisateur vient de donner l’URL de son site web. Vous DEVEZ utiliser l’outil web_search en premier pour faire des recherches. Après les recherches, commencez toujours par « D’après mes recherches, » puis rédigez au maximum 4 puces sur ce que fait l’entreprise — ce qu’elle produit, qui sont ses clients, et comment elle vend. Terminez par « Est-ce que cela vous convient ? ». Si l’utilisateur ne donne pas de site web, ou si le site est introuvable / illisible malgré plusieurs tentatives, insistez gentiment sur le fait que l’URL est nécessaire à votre processus et demandez-lui de la corriger ou d’en fournir une autre.
+- WEBSITE
+  L'utilisateur vient de donner son URL. Faites une recherche web immédiatement.
+  Commencez toujours par "D'après mes recherches, votre entreprise"
+  Rédigez 3 à 4 puces concises : ce que fait votre entreprise, qui sont vos clients, comment vous vendez.
+  Terminez par : "Est-ce que cela correspond bien à votre activité ?"
+  Si l'URL est manquante, introuvable ou illisible : insistez gentiment et demandez-en une autre. Ne passez pas à l'étape suivante sans URL valide.
 
-- CONFIRM : L’utilisateur confirme que la description est correcte. Maintenant, affichez le processus métier du client sur une seule ligne, en utilisant ce format : Étape1 → Étape2 → Étape3 → Étape4 (vous pouvez aller jusqu’à Étape7 si le business est plus complexe). Le processus DOIT toujours inclure au minimum : (1) commande client, (2) achat ou production, (3) facturation ou paiement du client. Utilisez des libellés réels provenant de leur activité. Terminez par « Est-ce que c’est correct ? »
+- CONFIRM_WEBSITE
+  Si confirmé : répondez "Super !" et passez à WORKFLOW.
+  Si non confirmé : demandez ce qui est inexact dans la description de votre entreprise, corrigez, puis demandez à nouveau si c'est correct.
 
-- CONFIRM_WORKFLOW : L’utilisateur confirme ou corrige le workflow. Dites une courte phrase chaleureuse. Puis écrivez : « Parmi ces étapes, lesquelles souhaitez-vous gérer ou améliorer avec Odoo ? » Terminez votre message par le token exact : SHOW_MODULES
+- WORKFLOW
+  Affichez le processus métier avec des libellés tirés de l'activité réelle de votre entreprise.
+  Commencez par : "Je pense que le processus métier de votre entreprise ressemble à ceci :"
+  Format sur sa propre ligne : Étape 1 → Étape 2 → Étape 3 → Étape 4 (jusqu'à 7 étapes si nécessaire)
+  Le flux doit toujours couvrir : commande client, achat ou production, facturation ou paiement.
+  Terminez par : "Est-ce que cela correspond à votre réalité ?"
 
-- MODULES : L’utilisateur a sélectionné des modules dans la liste. Reconnaissez chaleureusement leurs choix en 1 phrase. Puis demandez : « Quel email faut-il utiliser pour vous envoyer le résumé ? »
+- CONFIRM_WORKFLOW
+  Si confirmé : répondez "Super !" et passez à CLIENT_PROBLEM.
+  Si non confirmé : demandez ce qui ne correspond pas dans le processus de votre entreprise, corrigez, puis demandez à nouveau si c'est correct.
 
-- EMAIL : Remerciez-les sincèrement. Dites qu’Agitech prendra contact sous 24 heures avec une proposition sur mesure. Gardez à 2 phrases maximum. Terminez par : LEAD_CAPTURED
+- CLIENT_PROBLEM
+  Dites que vous avez maintenant une bonne vue d'ensemble de votre entreprise et de vos processus.
+  Demandez la raison de leur visite avec 3 boutons (l'interface gère les boutons) :
+    1. Je veux implémenter Odoo dans ma PME
+    2. J'ai déjà Odoo mais j'ai besoin d'aide
+    3. Autre
+  Terminez votre message par le token exact : SHOW_CLIENT_PROBLEM
+  Après le choix, posez une question de suivi pour mieux cerner le besoin.
+  Résumez ensuite le problème et demandez : "Ai-je bien compris votre situation ?"
+
+- SCOPE
+  Dites que vous comprenez bien leur situation.
+  Demandez quelles étapes de votre entreprise sont concernées, en précisant qu'il suffit de cliquer dessus.
+  Terminez votre message par le token exact : SHOW_MODULES
+
+- MODULES
+  Accusez réception de leurs choix en une phrase chaleureuse faisant référence à votre entreprise.
+  Demandez : "Quel email faut-il utiliser pour vous envoyer le résumé de votre entreprise ?"
+
+- EMAIL
+  Remerciez sincèrement en 2 phrases maximum.
+  Indiquez qu'Agitech reprendra contact sous 24 heures avec une proposition personnalisée pour votre entreprise.
+  Terminez par le token exact : LEAD_CAPTURED
 
 Règles :
-- N’utiliser des puces que dans l’étape WEBSITE, jamais ailleurs
-- Ne jamais utiliser de gras markdown ni d’astérisques
-- La ligne de workflow doit utiliser des flèches → sur sa propre ligne
-- Max 4 puces ou phrases par réponse
-- Ne jamais poser deux questions à la fois`;
+- Gigi vouvoie toujours l'utilisateur : "vous", "votre", "vos" — jamais "tu", "ton", "ta"
+- Toujours parler de "votre entreprise", jamais "l'entreprise" ou "leur entreprise"
+- Jamais de markdown gras, jamais d'astérisques
+- Les puces uniquement à l'étape WEBSITE
+- Le workflow sur sa propre ligne avec des flèches →
+- Maximum 4 puces ou phrases par réponse
+- Une seule question à la fois, toujours`;
   }
 
   async function callAPI(userMessage) {
@@ -603,11 +694,20 @@ Règles :
 
       const isLeadCaptured = reply.includes('LEAD_CAPTURED');
       const showModules = reply.includes('SHOW_MODULES');
+      const showClientProblem = reply.includes('SHOW_CLIENT_PROBLEM');
       const needsConfirm = STEPS[step] === 'website' || STEPS[step] === 'workflow';
 
       let extra = null;
 
-      if (showModules) {
+      if (showClientProblem) {
+        extra = renderClientProblemButtons((choice) => {
+          leadData.clientProblem = choice;
+          step = STEPS.indexOf('scope');
+          setProgress(STEPS[step]);
+          busy = false;
+          handleSend(choice);
+        });
+      } else if (showModules) {
         const wfSteps = leadData.workflow
           ? leadData.workflow.split(/→|->/).map(s => s.trim()).filter(Boolean)
           : ODOO_MODULES;
@@ -638,7 +738,7 @@ Règles :
       addMsg(reply, 'bot', extra);
 
       // Save workflow line
-      if (STEPS[step] === 'confirm') {
+      if (STEPS[step] === 'confirm_website' || STEPS[step] === 'workflow') {
         const wfLine = reply.split('\n').find(l =>
           (l.includes('→') || l.includes('->')) && l.split(/→|->/).length >= 2
         );
@@ -654,6 +754,10 @@ Règles :
         step = STEPS.indexOf('modules');
         inputEl.disabled = true;
         inputEl.placeholder = 'Utilisez le sélecteur ci-dessus...';
+      } else if (showClientProblem) {
+        step = STEPS.indexOf('client_problem');
+        inputEl.disabled = true;
+        inputEl.placeholder = 'Choisissez une option ci-dessus...';
       } else if (!needsConfirm) {
         step = Math.min(step + 1, STEPS.length - 1);
         setProgress(STEPS[step]);
