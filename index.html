@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>Agitech Advisor</title>
+  <title>Agitech AI Agent</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -24,7 +24,7 @@
       align-items: center;
       justify-content: space-between;
       padding: 0 1.25rem;
-      height: 52px;
+      height: 80px;
       border-bottom: 1px solid #2e2e2e;
       flex-shrink: 0;
     }
@@ -34,19 +34,44 @@
       gap: 10px;
     }
     .topbar-logo {
-      width: 28px;
-      height: 28px;
-      background: #7C6EE6;
-      border-radius: 50%;
+      height: 72px;
       display: flex;
       align-items: center;
-      justify-content: center;
     }
-    .topbar-logo svg { width: 16px; height: 16px; }
+    .topbar-logo img {
+      height: 100%;
+      width: auto;
+      object-fit: contain;
+      display: block;
+    }
     .topbar-title {
-      font-size: 15px;
-      font-weight: 500;
+      font-size: 28px;
+      font-weight: 600;
       color: #ececec;
+      line-height: 1.05;
+      margin-top: 8px; /* More space above "Gigi" */
+    }
+    .topbar-tags {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
+      align-items: flex-start;
+    }
+    .tag {
+      font-size: 11px;
+      color: #aaa;
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      border-radius: 20px;
+      padding: 2px 10px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .tag-mauve {
+      background: #3a2a5f;
+      border-color: #6f4ccf;
+      color: #e9ddff;
     }
     .topbar-badge {
       font-size: 11px;
@@ -110,6 +135,14 @@
       background: #7C6EE6;
       color: #fff;
     }
+    .msg-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain; /* Avoid cropping; keep the full face visible */
+      object-position: center;
+      display: block;
+      border-radius: 50%;
+    }
     .msg-avatar.user-av {
       background: #2e2e2e;
       color: #aaa;
@@ -118,8 +151,8 @@
 
     .msg-bubble {
       max-width: 72%;
-      font-size: 15px;
-      line-height: 1.65;
+      font-size: 17px;
+      line-height: 1.72;
       color: #ececec;
       padding: 0;
     }
@@ -218,13 +251,14 @@
 <div class="topbar">
   <div class="topbar-left">
     <div class="topbar-logo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
-        <path d="M8 12h8M12 8v8"/>
-      </svg>
+      <img src="/Asset/Bot%20pp.png" alt="Agitech bot avatar">
     </div>
-    <span class="topbar-title">Agitech Advisor</span>
-    <span class="topbar-badge">Lead qualification</span>
+    <div>
+      <div class="topbar-title">Gigi</div>
+        <div class="topbar-tags">
+            <span class="tag tag-mauve">Agitech AI Agent</span>
+        </div>
+    </div>
   </div>
 </div>
 
@@ -232,7 +266,7 @@
 
 <div class="input-area">
   <div class="input-box">
-    <input id="input" type="text" placeholder="Reply to Agitech Advisor..." autocomplete="off" />
+    <input id="input" type="text" placeholder="Votre réponse..." autocomplete="off" />
     <button class="send-btn" id="sendBtn">
       <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="19" x2="12" y2="5"></line>
@@ -240,7 +274,7 @@
       </svg>
     </button>
   </div>
-  <div class="input-hint">Powered by Claude · Your data is kept confidential</div>
+  <div class="input-hint">Propulsé par Claude · Vos données restent confidentielles</div>
 </div>
 
 <script>
@@ -257,9 +291,17 @@
   const progressEl = document.getElementById('progress');
 
   const ODOO_MODULES = [
-    'CRM & Sales', 'Purchase & Procurement', 'Inventory & Warehouse',
-    'Manufacturing', 'Accounting & Invoicing', 'Project Management',
-    'HR & Payroll', 'E-commerce', 'Point of Sale', 'Field Service'
+    'CRM & ventes', 'Achats & approvisionnements', 'Stocks & entrepôts',
+    'Fabrication', 'Comptabilité & facturation', 'Gestion de projet',
+    'RH & paie', 'Commerce en ligne', 'Point de vente', 'Service terrain'
+  ];
+
+  const BOT_AVATAR = '/Asset/Bot%20pp.png';
+
+  const INTRO_MESSAGES = [
+    "Bonjour ! Je suis Gigi, l'agent IA d'Agitech. 👋",
+    "En quelques minutes, je vais cerner votre business, vos processus et vos besoins. Ensuite, je produis un rapport et vous connecte directement à la bonne personne chez Agitech. Pas de formulaire, juste une conversation. 😊",
+    "Pour commencer : quel est le site web de votre entreprise ?"
   ];
 
   function setProgress(stepName) {
@@ -291,19 +333,19 @@
     container.style.cssText = 'display:flex;gap:8px;margin-top:12px;';
 
     const yesBtn = document.createElement('button');
-    yesBtn.textContent = '✓ Yes, that\'s right';
+    yesBtn.textContent = '✓ Oui, c\'est correct';
     yesBtn.style.cssText = 'background:#7C6EE6;border:none;border-radius:20px;padding:8px 18px;font-size:13px;color:#fff;cursor:pointer;font-family:inherit;transition:background 0.2s;';
     yesBtn.addEventListener('mouseenter', () => yesBtn.style.background = '#6558d4');
     yesBtn.addEventListener('mouseleave', () => yesBtn.style.background = '#7C6EE6');
     yesBtn.addEventListener('click', () => {
       container.style.opacity = '0.4';
       container.style.pointerEvents = 'none';
-      addMsg('Yes, that\'s right', 'user');
+      addMsg('Oui, c\'est correct', 'user');
       onYes();
     });
 
     const noBtn = document.createElement('button');
-    noBtn.textContent = '✎ No, I want to correct';
+    noBtn.textContent = '✎ Non, je veux corriger';
     noBtn.style.cssText = 'background:#2a2a3a;border:1px solid #3a3a5a;border-radius:20px;padding:8px 18px;font-size:13px;color:#aaa;cursor:pointer;font-family:inherit;transition:all 0.2s;';
     noBtn.addEventListener('mouseenter', () => { noBtn.style.background = '#3a3a4a'; noBtn.style.color = '#ececec'; });
     noBtn.addEventListener('mouseleave', () => { noBtn.style.background = '#2a2a3a'; noBtn.style.color = '#aaa'; });
@@ -311,7 +353,7 @@
       container.style.opacity = '0.4';
       container.style.pointerEvents = 'none';
       inputEl.disabled = false;
-      inputEl.placeholder = 'Type your correction...';
+      inputEl.placeholder = 'Écrivez votre correction...';
       inputEl.focus();
       sendBtn.disabled = false;
     });
@@ -327,7 +369,7 @@
 
     const label = document.createElement('p');
     label.style.cssText = 'font-size:13px;color:#888;margin-bottom:10px;';
-    label.textContent = 'Select all that apply — then click Confirm';
+    label.textContent = 'Sélectionnez ce qui vous correspond — puis cliquez sur Confirmer';
     container.appendChild(label);
 
     const grid = document.createElement('div');
@@ -359,7 +401,7 @@
     container.appendChild(grid);
 
     const confirmBtn = document.createElement('button');
-    confirmBtn.textContent = 'Confirm selection →';
+    confirmBtn.textContent = 'Confirmer la sélection →';
     confirmBtn.style.cssText = 'background:#7C6EE6;border:none;border-radius:9px;padding:9px 18px;font-size:14px;color:#fff;cursor:pointer;font-family:inherit;transition:background 0.2s;';
     confirmBtn.addEventListener('mouseenter', () => confirmBtn.style.background = '#6558d4');
     confirmBtn.addEventListener('mouseleave', () => confirmBtn.style.background = '#7C6EE6');
@@ -382,7 +424,15 @@
 
     const av = document.createElement('div');
     av.className = 'msg-avatar ' + (role === 'bot' ? 'bot-av' : 'user-av');
-    av.textContent = role === 'bot' ? 'A' : 'U';
+    if (role === 'bot') {
+      const img = document.createElement('img');
+      img.src = BOT_AVATAR;
+      img.alt = '';
+      img.loading = 'lazy';
+      av.appendChild(img);
+    } else {
+      av.textContent = 'U';
+    }
 
     const bubble = document.createElement('div');
     bubble.className = 'msg-bubble';
@@ -392,7 +442,9 @@
         .replace(/\*\*(.*?)\*\*/g, '$1')
         .replace(/\*(.*?)\*/g, '$1')
         .replace(/`(.*?)`/g, '$1')
-        .replace('SHOW_MODULES', '').trim();
+        .replace('SHOW_MODULES', '')
+        .replace('LEAD_CAPTURED', '')
+        .trim();
 
       const lines = clean.split('\n').filter(l => l.trim());
       const workflowIdx = lines.findIndex(l =>
@@ -443,7 +495,7 @@
       ul.style.cssText = 'padding-left:18px;display:flex;flex-direction:column;gap:4px;margin:4px 0;';
       bulletLines.forEach(l => {
         const li = document.createElement('li');
-        li.style.cssText = 'font-size:14px;line-height:1.6;color:#ececec;';
+        li.style.cssText = 'font-size:16px;line-height:1.65;color:#ececec;';
         li.textContent = l.replace(/^[-•*]\s/, '').trim();
         ul.appendChild(li);
       });
@@ -465,7 +517,11 @@
       row.id = 'typing';
       const av = document.createElement('div');
       av.className = 'msg-avatar bot-av';
-      av.textContent = 'A';
+      const img = document.createElement('img');
+      img.src = BOT_AVATAR;
+      img.alt = '';
+      img.loading = 'lazy';
+      av.appendChild(img);
       const dots = document.createElement('div');
       dots.className = 'typing-dots';
       dots.innerHTML = '<span></span><span></span><span></span>';
@@ -479,30 +535,30 @@
   }
 
   function systemPrompt() {
-    return `You are an AI assistant built on Claude, set up by Agitech, an Odoo implementation company. Your goal is to prepare a clear document summarizing what the client wants and how their business works — to save everyone's time before the first meeting.
+    return `Vous êtes un assistant IA basé sur Claude, mis en place par Agitech, une entreprise d’implémentation Odoo. Votre objectif est de préparer un document clair résumant ce que le client veut et comment son entreprise fonctionne — pour faire gagner du temps avant le premier rendez-vous.
 
-Current step: ${STEPS[step]}
+Étape actuelle : ${STEPS[step]}
 
-Strict conversation flow:
+Flux de conversation strict :
 
-- INTRO: Introduce yourself warmly. Say you are an AI model based on Claude, set up by Agitech. Explain in one sentence that your goal is to prepare a document capturing their business process and needs to save everyone's time. Then ask: "To get started, what is your company website?"
+- INTRO : Présentez-vous chaleureusement. Dites que vous êtes un modèle d’IA basé sur Claude, mis en place par Agitech. Expliquez en une phrase que votre objectif est de préparer un document qui capture le fonctionnement et les besoins de leur entreprise afin de gagner du temps. Puis demandez : « Pour commencer, quel est le site web de votre entreprise ? »
 
-- WEBSITE: The user just gave their website URL. You MUST use the web_search tool first to research it. After searching, always start with "According to my research," then write maximum 4 bullet points about what the company does — what they produce, who their clients are, how they sell. End with "Does that sound right?"
+- WEBSITE : L’utilisateur vient de donner l’URL de son site web. Vous DEVEZ utiliser l’outil web_search en premier pour faire des recherches. Après les recherches, commencez toujours par « D’après mes recherches, » puis rédigez au maximum 4 puces sur ce que fait l’entreprise — ce qu’elle produit, qui sont ses clients, et comment elle vend. Terminez par « Est-ce que cela vous convient ? »
 
-- CONFIRM: The user confirmed the description is correct. Now output their business process on a single line using ONLY this format: Step1 → Step2 → Step3 → Step4. The process MUST always include: (1) client ordering, (2) buying or producing, (3) invoicing or client paying. Use real labels from their business. End with "Does that sound right?"
+- CONFIRM : L’utilisateur confirme que la description est correcte. Maintenant, affichez le processus métier du client sur une seule ligne, en utilisant UNIQUEMENT ce format : Étape1 → Étape2 → Étape3 → Étape4. Le processus DOIT toujours inclure : (1) commande client, (2) achat ou production, (3) facturation ou paiement du client. Utilisez des libellés réels provenant de leur activité. Terminez par « Est-ce que c’est correct ? »
 
-- CONFIRM_WORKFLOW: User confirmed or corrected the workflow. Say one short warm sentence. Then say: "Which of these steps would you like to manage or improve with Odoo?" End your message with the exact token: SHOW_MODULES
+- CONFIRM_WORKFLOW : L’utilisateur confirme ou corrige le workflow. Dites une courte phrase chaleureuse. Puis écrivez : « Parmi ces étapes, lesquelles souhaitez-vous gérer ou améliorer avec Odoo ? » Terminez votre message par le token exact : SHOW_MODULES
 
-- MODULES: User has selected modules from the list. Acknowledge their choices warmly in 1 sentence. Then ask: "What email should we use to send you the summary?"
+- MODULES : L’utilisateur a sélectionné des modules dans la liste. Reconnaissez chaleureusement leurs choix en 1 phrase. Puis demandez : « Quel email faut-il utiliser pour vous envoyer le résumé ? »
 
-- EMAIL: Thank them genuinely. Tell them Agitech will be in touch within 24 hours with a tailored proposal. Keep it to 2 sentences. End with: LEAD_CAPTURED
+- EMAIL : Remerciez-les sincèrement. Dites qu’Agitech prendra contact sous 24 heures avec une proposition sur mesure. Gardez à 2 phrases maximum. Terminez par : LEAD_CAPTURED
 
-Rules:
-- Only use bullet points in the WEBSITE step, never elsewhere
-- Never use markdown bold or asterisks
-- Workflow line must use → arrows on its own line
-- Max 4 bullet points or sentences per reply
-- Never ask two questions at once`;
+Règles :
+- N’utiliser des puces que dans l’étape WEBSITE, jamais ailleurs
+- Ne jamais utiliser de gras markdown ni d’astérisques
+- La ligne de workflow doit utiliser des flèches → sur sa propre ligne
+- Max 4 puces ou phrases par réponse
+- Ne jamais poser deux questions à la fois`;
   }
 
   async function callAPI(userMessage) {
@@ -523,7 +579,7 @@ Rules:
     const textBlocks = data.content && data.content.filter(b => b.type === 'text');
     const reply = textBlocks && textBlocks.length > 0
       ? textBlocks.map(b => b.text).join(' ').trim()
-      : 'Sorry, something went wrong.';
+      : 'Désolé, une erreur est survenue.';
     history.push({ role: 'assistant', content: data.content });
     return reply;
   }
@@ -562,17 +618,17 @@ Rules:
         // Disable input while user clicks Yes/No
         inputEl.disabled = true;
         sendBtn.disabled = true;
-        inputEl.placeholder = 'Use the buttons above...';
+        inputEl.placeholder = 'Utilisez les boutons ci-dessus...';
         extra = renderConfirmButtons(
           // YES — move forward
           () => {
             step = Math.min(step + 1, STEPS.length - 1);
             setProgress(STEPS[step]);
             inputEl.disabled = false;
-            inputEl.placeholder = 'Reply to Agitech Advisor...';
+            inputEl.placeholder = 'Votre réponse...';
             sendBtn.disabled = false;
             busy = false;
-            handleSend('Yes, that\'s correct');
+            handleSend('Oui, c\'est correct');
           },
           // NO — let user type correction (input already re-enabled in renderConfirmButtons)
           () => {
@@ -594,12 +650,12 @@ Rules:
       if (isLeadCaptured) {
         step = STEPS.indexOf('done');
         inputEl.disabled = true;
-        inputEl.placeholder = '✓ All done!';
+        inputEl.placeholder = '✓ Tout est bon !';
         console.log('Lead captured:', leadData);
       } else if (showModules) {
         step = STEPS.indexOf('modules');
         inputEl.disabled = true;
-        inputEl.placeholder = 'Use the selector above...';
+        inputEl.placeholder = 'Utilisez le sélecteur ci-dessus...';
       } else if (!needsConfirm) {
         step = Math.min(step + 1, STEPS.length - 1);
         setProgress(STEPS[step]);
@@ -607,7 +663,7 @@ Rules:
 
     } catch (e) {
       setTyping(false);
-      addMsg('Oops, something went wrong. Please try again.', 'bot');
+      addMsg('Oups, une erreur s’est produite. Veuillez réessayer.', 'bot');
     }
 
     if (!inputEl.disabled) {
@@ -620,24 +676,31 @@ Rules:
   sendBtn.addEventListener('click', () => handleSend());
   inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') handleSend(); });
 
-  // Kick off with intro — Claude introduces itself
-  setProgress('intro');
-  (async () => {
-    setTyping(true);
-    try {
-      const reply = await callAPI('start');
+  async function playIntro() {
+    setProgress('intro');
+    inputEl.disabled = true;
+    sendBtn.disabled = true;
+    busy = true;
+
+    for (const line of INTRO_MESSAGES) {
+      setTyping(true);
+      await new Promise(resolve => setTimeout(resolve, 800));
       setTyping(false);
-      addMsg(reply, 'bot');
-      step = STEPS.indexOf('website');
-      setProgress('website');
-    } catch(e) {
-      setTyping(false);
-      addMsg("Hi! I'm the Agitech Advisor. What's your company website?", 'bot');
+      addMsg(line, 'bot');
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
+
+    step = STEPS.indexOf('website');
+    setProgress('website');
     busy = false;
+    inputEl.disabled = false;
     sendBtn.disabled = false;
+    inputEl.placeholder = 'Votre réponse...';
     inputEl.focus();
-  })();
+  }
+
+  // Kick off with local intro sequence
+  playIntro();
 </script>
 </body>
 </html>
